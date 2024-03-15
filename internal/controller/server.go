@@ -6,10 +6,10 @@ import (
 	"fmt"
 	apiv1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
 	admissionv1 "k8s.io/api/admission/v1"
+	v1 "k8s.io/api/core/v1"
 	"log"
 	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"slices"
 	"strings"
 	"sync"
 )
@@ -85,8 +85,6 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 			UID:     admissionReview.Request.UID,
 		}
 
-		var patches []map[string]string
-
 		defer func() {
 			admissionReview.Request = nil
 			admissionReview.Response = admissionResponse
@@ -94,36 +92,41 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 			json.NewEncoder(rw).Encode(admissionReview)
 		}()
 
-		containers := slices.Concat(pod.Spec.InitContainers, pod.Spec.Containers)
+		var patches []map[string]string
 
-		for i, container := range containers {
-			image, rewrite := rewriteImage(container.Image, spec.Rules)
-			if !rewrite {
-				continue
+		rewriteContainers := func(containers []v1.Container, initContainers bool) {
+			for i, container := range containers {
+				image, rewrite := rewriteImage(container.Image, spec.Rules)
+				if !rewrite {
+					continue
+				}
+
+				var containerPath string
+				if initContainers {
+					containerPath = "initContainers"
+				} else {
+					containerPath = "containers"
+				}
+
+				patches = append(patches, map[string]string{
+					"op":    "replace",
+					"path":  fmt.Sprintf("/spec/%s/%d/image", containerPath, i),
+					"value": image,
+				})
+
+				ctrl.Log.Info(
+					"rewrite image",
+					"pod", pod.Name+"/"+pod.Namespace,
+					"rule", name,
+					"container", containerPath+"/"+container.Name,
+					"source", container.Image,
+					"rewrite", image,
+				)
 			}
-
-			var containerPath string
-			if i < len(pod.Spec.InitContainers) {
-				containerPath = "initContainers"
-			} else {
-				containerPath = "containers"
-			}
-
-			patches = append(patches, map[string]string{
-				"op":    "replace",
-				"path":  fmt.Sprintf("/spec/%s/%d/image", containerPath, i),
-				"value": image,
-			})
-
-			ctrl.Log.Info(
-				"rewrite image",
-				"pod", pod.Name+"/"+pod.Namespace,
-				"rule", name,
-				"container", containerPath+"/"+container.Name,
-				"source", container.Image,
-				"rewrite", image,
-			)
 		}
+
+		rewriteContainers(pod.Spec.InitContainers, true)
+		rewriteContainers(pod.Spec.Containers, false)
 
 		if len(patches) > 0 {
 			jsonPatch := admissionv1.PatchTypeJSONPatch
