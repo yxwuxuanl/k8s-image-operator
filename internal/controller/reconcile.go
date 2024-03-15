@@ -197,6 +197,7 @@ func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook 
 	}
 
 	noneSideEffects := v1.SideEffectClassNone
+	ignoreFailure := v1.Ignore
 
 	mutatingWebhook := v1.MutatingWebhook{
 		Name:                    getMutatingWebhookName(name),
@@ -215,11 +216,17 @@ func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook 
 		NamespaceSelector: namespaceSelector,
 		ObjectSelector:    spec.PodSelector,
 		SideEffects:       &noneSideEffects,
+		FailurePolicy:     &ignoreFailure,
 	}
 
-	if spec.MutatingWebhookSpec != nil {
-		mutatingWebhook.FailurePolicy = spec.MutatingWebhookSpec.FailurePolicy
-		mutatingWebhook.SideEffects = spec.MutatingWebhookSpec.SideEffects
+	if webhookSpec := spec.MutatingWebhookSpec; webhookSpec != nil {
+		if v := webhookSpec.FailurePolicy; v != nil {
+			mutatingWebhook.FailurePolicy = v
+		}
+
+		if v := webhookSpec.SideEffects; v != nil {
+			mutatingWebhook.SideEffects = v
+		}
 	}
 
 	return mutatingWebhook

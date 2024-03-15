@@ -67,7 +67,6 @@ func setWebhookHandler(name string, handler http.HandlerFunc) {
 }
 
 func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
-	// build
 	return func(rw http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			rw.WriteHeader(http.StatusMethodNotAllowed)
