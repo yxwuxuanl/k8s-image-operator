@@ -9,7 +9,7 @@ import (
 
 func rewriteImage(image string, rules []v1.RewriteRule) (string, bool) {
 	image = normalizeImage(image)
-
+	// build
 	for _, rule := range rules {
 		if rule.Registry != "" {
 			if strings.HasPrefix(image, rule.Registry+"/") {
