@@ -2,8 +2,6 @@ package controller
 
 import (
 	v1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
-	"log"
-	"net"
 	"testing"
 )
 
@@ -52,9 +50,4 @@ func TestRewriteImage(t *testing.T) {
 			t.Fatalf("test `%s` failed", test.raw)
 		}
 	}
-}
-
-func TestPort(t *testing.T) {
-	host, p, err := net.SplitHostPort(":x")
-	log.Printf("%s %s %v", host, p, err)
 }
