@@ -115,12 +115,12 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 				})
 
 				ctrl.Log.Info(
-					"isRewrite image",
+					"rewrite image",
 					"pod", pod.Name+"/"+pod.Namespace,
 					"rule", name,
 					"container", containerPath+"/"+container.Name,
 					"source", container.Image,
-					"isRewrite", image,
+					"rewrite", image,
 				)
 			}
 		}
