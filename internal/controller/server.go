@@ -94,10 +94,10 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 
 		var patches []map[string]string
 
-		rewriteContainers := func(containers []v1.Container, initContainers bool) {
+		_rewriteImage := func(containers []v1.Container, initContainers bool) {
 			for i, container := range containers {
-				image, rewrite := rewriteImage(container.Image, spec.Rules)
-				if !rewrite {
+				image, isRewrite := rewriteImage(container.Image, spec.Rules)
+				if !isRewrite {
 					continue
 				}
 
@@ -115,18 +115,18 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 				})
 
 				ctrl.Log.Info(
-					"rewrite image",
+					"isRewrite image",
 					"pod", pod.Name+"/"+pod.Namespace,
 					"rule", name,
 					"container", containerPath+"/"+container.Name,
 					"source", container.Image,
-					"rewrite", image,
+					"isRewrite", image,
 				)
 			}
 		}
 
-		rewriteContainers(pod.Spec.InitContainers, true)
-		rewriteContainers(pod.Spec.Containers, false)
+		_rewriteImage(pod.Spec.InitContainers, true)
+		_rewriteImage(pod.Spec.Containers, false)
 
 		if len(patches) > 0 {
 			jsonPatch := admissionv1.PatchTypeJSONPatch
