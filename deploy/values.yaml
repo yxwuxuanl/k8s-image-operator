@@ -1,0 +1,3 @@
+image:
+  repository: registry.cn-shenzhen.aliyuncs.com/lin2ur/k8s-image-operator
+  tag: dev

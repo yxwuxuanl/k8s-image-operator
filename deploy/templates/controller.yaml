@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-controller
+  labels:
+    app: {{ .Release.Name }}-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-controller
+  template:
+    metadata:
+      name: {{ .Release.Name }}-controller
+      labels:
+        app: {{ .Release.Name }}-controller
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: {{ .Release.Name }}-controller
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Release.Name }}-webhook-tls
+      containers:
+        - name: {{ .Release.Name }}-controller
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: IfNotPresent
+          workingDir: /
+          volumeMounts:
+            - mountPath: /tls
+              name: tls
+          args:
+            - --namespace={{ .Release.Namespace }}
+            - --service={{ .Release.Name }}-controller
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-controller
+spec:
+  selector:
+    app: {{ .Release.Name }}-controller
+  ports:
+    - protocol: TCP
+      port: 443
+      targetPort: 443
+  type: ClusterIP
