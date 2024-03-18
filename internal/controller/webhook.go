@@ -28,20 +28,22 @@ var (
 func StartWebhookServer() {
 	handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/")
+		handler := getWebhookHandler(name)
 
-		if handler := getWebhookHandler(name); handler != nil {
-			handler(rw, r)
-		} else {
+		if handler == nil {
 			rw.WriteHeader(http.StatusNotFound)
+			return
 		}
+
+		handler(rw, r)
 	})
+
+	ctrl.Log.Info("wehbook server listening at " + *webhookAddr)
 
 	err := (&http.Server{Addr: *webhookAddr, Handler: handler}).ListenAndServeTLS(
 		*tlsCertFile,
 		*tlsKeyFile,
 	)
-
-	ctrl.Log.Info("wehbook server listening at " + *webhookAddr)
 
 	if err != nil {
 		log.Fatal(err.Error())

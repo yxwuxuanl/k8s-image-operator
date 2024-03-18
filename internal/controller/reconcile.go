@@ -116,10 +116,8 @@ func (r *RuleReconciler) deleteRule(ctx context.Context, name string) error {
 		return err
 	}
 
-	name = getMutatingWebhookName(name)
-
 	index := slices.IndexFunc(mutatingWebhookConfiguration.Webhooks, func(webhook v1.MutatingWebhook) bool {
-		return webhook.Name == name
+		return webhook.Name == getMutatingWebhookName(name)
 	})
 
 	if index < 0 {
