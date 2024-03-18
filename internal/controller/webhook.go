@@ -25,7 +25,7 @@ var (
 
 var (
 	handlers    = make(map[string]http.HandlerFunc)
-	noopHandler = createWebhookHandler("noop", apiv1.RuleSpec{})
+	noopHandler = createWebhookHandler("", apiv1.RuleSpec{})
 	mux         sync.RWMutex
 )
 
@@ -94,6 +94,10 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 
 			json.NewEncoder(rw).Encode(admissionReview)
 		}()
+
+		if len(spec.DisallowedTags) == 0 && len(spec.Rules) == 0 {
+			return
+		}
 
 		var patches []map[string]string
 
