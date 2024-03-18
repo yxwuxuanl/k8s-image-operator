@@ -29,12 +29,12 @@ type RuleSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// +kubebuilder:validation:MinItems=1
-	Rules []RewriteRule `json:"rules"`
+	Rules          []RewriteRule `json:"rules"`
+	DisallowedTags []string      `json:"disallowedTags"`
 
 	NamespaceSelector   *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
 	PodSelector         *metav1.LabelSelector `json:"podSelector,omitempty"`
-	MutatingWebhookSpec *v1.MutatingWebhook   `json:"webhookSpec,omitempty"`
+	MutatingWebhookSpec v1.MutatingWebhook    `json:"webhookSpec,omitempty"`
 }
 
 type RewriteRule struct {

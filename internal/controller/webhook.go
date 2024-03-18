@@ -5,11 +5,14 @@ import (
 	"flag"
 	"fmt"
 	apiv1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
+	"io"
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"log"
 	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -21,21 +24,15 @@ var (
 )
 
 var (
-	handlers = make(map[string]http.HandlerFunc)
-	mux      sync.RWMutex
+	handlers    = make(map[string]http.HandlerFunc)
+	noopHandler = createWebhookHandler("noop", apiv1.RuleSpec{})
+	mux         sync.RWMutex
 )
 
 func StartWebhookServer() {
 	handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/")
-		handler := getWebhookHandler(name)
-
-		if handler == nil {
-			rw.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		handler(rw, r)
+		getWebhookHandler(name).ServeHTTP(rw, r)
 	})
 
 	ctrl.Log.Info("wehbook server listening at " + *webhookAddr)
@@ -54,7 +51,11 @@ func getWebhookHandler(name string) http.HandlerFunc {
 	mux.RLock()
 	defer mux.RUnlock()
 
-	return handlers[name]
+	if handler, ok := handlers[name]; ok {
+		return handler
+	}
+
+	return noopHandler
 }
 
 func setWebhookHandler(name string, handler http.HandlerFunc) {
@@ -96,18 +97,39 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 
 		var patches []map[string]string
 
-		_rewriteImage := func(containers []v1.Container, initContainers bool) {
+		processContainers := func(containers []v1.Container, initContainers bool) {
+			var containerPath string
+			if initContainers {
+				containerPath = "initContainers"
+			} else {
+				containerPath = "containers"
+			}
+
 			for i, container := range containers {
+				hasDisallowedTag := slices.ContainsFunc(spec.DisallowedTags, func(s string) bool {
+					return s == getImageTag(container.Image)
+				})
+
+				if hasDisallowedTag {
+					admissionResponse.Allowed = false
+					admissionResponse.Result = &metav1.Status{
+						Reason: "ImageTagNotAllowed",
+						Message: fmt.Sprintf(
+							"[%s] tags is not allowed in %s: %s",
+							strings.Join(spec.DisallowedTags, " "), containerPath, container.Name,
+						),
+					}
+
+					ctrl.Log.Info(admissionResponse.Result.Message,
+						"pod", pod.Name+"/"+pod.Namespace,
+						"rule", name,
+					)
+					return
+				}
+
 				image, isRewrite := rewriteImage(container.Image, spec.Rules)
 				if !isRewrite {
 					continue
-				}
-
-				var containerPath string
-				if initContainers {
-					containerPath = "initContainers"
-				} else {
-					containerPath = "containers"
 				}
 
 				patches = append(patches, map[string]string{
@@ -127,13 +149,29 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 			}
 		}
 
-		_rewriteImage(pod.Spec.InitContainers, true)
-		_rewriteImage(pod.Spec.Containers, false)
+		processContainers(pod.Spec.InitContainers, true)
+		processContainers(pod.Spec.Containers, false)
 
-		if len(patches) > 0 {
+		if admissionResponse.Allowed && len(patches) > 0 {
 			jsonPatch := admissionv1.PatchTypeJSONPatch
 			admissionResponse.PatchType = &jsonPatch
 			admissionResponse.Patch, _ = json.Marshal(patches)
 		}
 	}
+}
+
+func decodeAdmissionReview(r io.ReadCloser) (*admissionv1.AdmissionReview, *v1.Pod, error) {
+	defer r.Close()
+
+	admissionReview := new(admissionv1.AdmissionReview)
+	if err := json.NewDecoder(r).Decode(admissionReview); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode admission review: %w", err)
+	}
+
+	pod := new(v1.Pod)
+	if err := json.Unmarshal(admissionReview.Request.Object.Raw, pod); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal request object: %w", err)
+	}
+
+	return admissionReview, pod, nil
 }

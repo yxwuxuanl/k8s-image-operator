@@ -6,10 +6,7 @@ import (
 	"flag"
 	"fmt"
 	apiv1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
-	"io"
-	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/admissionregistration/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -21,7 +18,7 @@ var (
 	excludeOperatorNamespace = flag.Bool("exclude-operator-namespace", true, "")
 )
 
-const WebhookName = "image-operator"
+const MutatingWebhookConfigurationName = "image-operator"
 
 var webhookClientConfig v1.WebhookClientConfig
 
@@ -29,7 +26,7 @@ func (r *RuleReconciler) setRule(ctx context.Context, name string, spec apiv1.Ru
 	mutatingWebhookConfiguration, err := r.clientset.
 		AdmissionregistrationV1().
 		MutatingWebhookConfigurations().
-		Get(ctx, WebhookName, metav1.GetOptions{})
+		Get(ctx, MutatingWebhookConfigurationName, metav1.GetOptions{})
 
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -39,9 +36,9 @@ func (r *RuleReconciler) setRule(ctx context.Context, name string, spec apiv1.Ru
 
 		mutatingWebhookConfiguration = &v1.MutatingWebhookConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: WebhookName,
+				Name: MutatingWebhookConfigurationName,
 				Labels: map[string]string{
-					"app.kubernetes.io/managed-by": WebhookName,
+					"app.kubernetes.io/managed-by": "image-operator",
 				},
 			},
 			Webhooks: []v1.MutatingWebhook{createMutatingWebhook(name, spec)},
@@ -87,7 +84,7 @@ func (r *RuleReconciler) setRule(ctx context.Context, name string, spec apiv1.Ru
 		MutatingWebhookConfigurations().
 		Patch(
 			ctx,
-			WebhookName,
+			MutatingWebhookConfigurationName,
 			types.JSONPatchType,
 			jsonPatch,
 			metav1.PatchOptions{},
@@ -105,7 +102,7 @@ func (r *RuleReconciler) deleteRule(ctx context.Context, name string) error {
 	mutatingWebhookConfiguration, err := r.clientset.
 		AdmissionregistrationV1().
 		MutatingWebhookConfigurations().
-		Get(ctx, WebhookName, metav1.GetOptions{})
+		Get(ctx, MutatingWebhookConfigurationName, metav1.GetOptions{})
 
 	if err != nil {
 		ctrl.Log.Error(err, "deleteRule: failed to get mutatingWebhookConfiguration")
@@ -128,7 +125,7 @@ func (r *RuleReconciler) deleteRule(ctx context.Context, name string) error {
 		err := r.clientset.
 			AdmissionregistrationV1().
 			MutatingWebhookConfigurations().
-			Delete(ctx, WebhookName, metav1.DeleteOptions{})
+			Delete(ctx, MutatingWebhookConfigurationName, metav1.DeleteOptions{})
 
 		if err != nil {
 			ctrl.Log.Error(err, "deleteRule: failed to delete mutatingWebhookConfiguration")
@@ -145,7 +142,7 @@ func (r *RuleReconciler) deleteRule(ctx context.Context, name string) error {
 		MutatingWebhookConfigurations().
 		Patch(
 			ctx,
-			WebhookName,
+			MutatingWebhookConfigurationName,
 			types.JSONPatchType,
 			[]byte(patches),
 			metav1.PatchOptions{},
@@ -157,26 +154,6 @@ func (r *RuleReconciler) deleteRule(ctx context.Context, name string) error {
 	}
 
 	return nil
-}
-
-func decodeAdmissionReview(r io.ReadCloser) (*admissionv1.AdmissionReview, *corev1.Pod, error) {
-	defer r.Close()
-
-	admissionReview := new(admissionv1.AdmissionReview)
-	if err := json.NewDecoder(r).Decode(admissionReview); err != nil {
-		return nil, nil, fmt.Errorf("failed to decode admission review: %w", err)
-	}
-
-	pod := new(corev1.Pod)
-	if err := json.Unmarshal(admissionReview.Request.Object.Raw, pod); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal request object: %w", err)
-	}
-
-	return admissionReview, pod, nil
-}
-
-func getMutatingWebhookName(name string) string {
-	return name + "." + WebhookName + ".io"
 }
 
 func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook {
@@ -194,9 +171,6 @@ func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook 
 		})
 	}
 
-	noneSideEffects := v1.SideEffectClassNone
-	ignoreFailure := v1.Ignore
-
 	mutatingWebhook := v1.MutatingWebhook{
 		Name:                    getMutatingWebhookName(name),
 		ClientConfig:            createWebhookClientConfig(name),
@@ -213,21 +187,22 @@ func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook 
 		},
 		NamespaceSelector: namespaceSelector,
 		ObjectSelector:    spec.PodSelector,
-		SideEffects:       &noneSideEffects,
-		FailurePolicy:     &ignoreFailure,
 	}
 
-	if webhookSpec := spec.MutatingWebhookSpec; webhookSpec != nil {
-		if v := webhookSpec.FailurePolicy; v != nil {
-			mutatingWebhook.FailurePolicy = v
-		}
+	mutatingWebhook.SideEffects = valueOrDefault(nil, v1.SideEffectClassNone)
 
-		if v := webhookSpec.SideEffects; v != nil {
-			mutatingWebhook.SideEffects = v
-		}
-	}
+	mutatingWebhook.FailurePolicy = valueOrDefault(spec.MutatingWebhookSpec.FailurePolicy, v1.Ignore)
+	mutatingWebhook.TimeoutSeconds = valueOrDefault(spec.MutatingWebhookSpec.TimeoutSeconds, 5)
 
 	return mutatingWebhook
+}
+
+func valueOrDefault[T any](n *T, defaultValue T) *T {
+	if n != nil {
+		return n
+	}
+
+	return &defaultValue
 }
 
 func createWebhookClientConfig(name string) v1.WebhookClientConfig {
@@ -237,4 +212,8 @@ func createWebhookClientConfig(name string) v1.WebhookClientConfig {
 	conf.Service.Path = &name
 
 	return conf
+}
+
+func getMutatingWebhookName(name string) string {
+	return name + ".image-operator.io"
 }

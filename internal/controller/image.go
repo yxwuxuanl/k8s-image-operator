@@ -57,3 +57,11 @@ func normalizeImage(image string) string {
 
 	return image
 }
+
+func getImageTag(image string) string {
+	if i := strings.Index(image, ":"); i > -1 {
+		return image[i:]
+	}
+
+	return "latest"
+}
