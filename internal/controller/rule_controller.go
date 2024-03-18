@@ -24,7 +24,6 @@ import (
 	v1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	"net"
 	"os"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -42,13 +41,14 @@ var (
 // RuleReconciler reconciles a Rule object
 type RuleReconciler struct {
 	client.Client
-	Scheme    *runtime.Scheme
-	clientset *kubernetes.Clientset
+	Scheme *runtime.Scheme
 }
 
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules/finalizers,verbs=update
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=*,resourceNames=image-operator
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -64,11 +64,11 @@ func (r *RuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	logger.Info("Reconcile", "obj", req.Name)
 
 	rule := new(imagev1.Rule)
-	err := r.Get(ctx, req.NamespacedName, rule)
 
-	if err != nil {
+	if err := r.Get(ctx, req.NamespacedName, rule); err != nil {
 		if apierrors.IsNotFound(err) {
-			if err := r.deleteRule(ctx, req.Name); err != nil {
+			if err := r.delete(ctx, req.Name); err != nil {
+				logger.Error(err, "failed to delete rule")
 				return ctrl.Result{}, err
 			}
 
@@ -82,7 +82,7 @@ func (r *RuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	setWebhookHandler(req.Name, createWebhookHandler(req.Name, rule.Spec))
 
-	if err = r.setRule(ctx, rule.Name, rule.Spec); err != nil {
+	if err := r.set(ctx, rule.Name, rule.Spec); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -107,13 +107,6 @@ func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	} else {
 		return err
 	}
-
-	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
-	if err != nil {
-		return err
-	}
-
-	r.clientset = clientset
 
 	caCert, err := os.ReadFile(*tlsCACertFile)
 	if err != nil {

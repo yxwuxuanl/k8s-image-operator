@@ -39,6 +39,10 @@ spec:
             spec:
               description: RuleSpec defines the desired state of Rule
               properties:
+                disallowedTags:
+                  items:
+                    type: string
+                  type: array
                 namespaceSelector:
                   description: |-
                     A label selector is a label query over a set of resources. The result of matchLabels and
@@ -145,7 +149,6 @@ spec:
                     required:
                       - replacement
                     type: object
-                  minItems: 1
                   type: array
                 webhookSpec:
                   description: MutatingWebhook describes an admission webhook and the
@@ -607,6 +610,7 @@ spec:
                     - sideEffects
                   type: object
               required:
+                - disallowedTags
                 - rules
               type: object
             status:

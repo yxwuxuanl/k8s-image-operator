@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"slices"
 )
 
@@ -20,41 +20,30 @@ var (
 
 const MutatingWebhookConfigurationName = "image-operator"
 
-var webhookClientConfig v1.WebhookClientConfig
+var (
+	webhookClientConfig             v1.WebhookClientConfig
+	mutatingWebhookConfigurationKey = client.ObjectKey{Name: MutatingWebhookConfigurationName}
+)
 
-func (r *RuleReconciler) setRule(ctx context.Context, name string, spec apiv1.RuleSpec) error {
-	mutatingWebhookConfiguration, err := r.clientset.
-		AdmissionregistrationV1().
-		MutatingWebhookConfigurations().
-		Get(ctx, MutatingWebhookConfigurationName, metav1.GetOptions{})
+func (r *RuleReconciler) set(ctx context.Context, name string, spec apiv1.RuleSpec) error {
+	mutatingWebhookConfiguration := &v1.MutatingWebhookConfiguration{}
 
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			ctrl.Log.Error(err, "setRule: failed to get mutatingWebhookConfiguration")
-			return err
-		}
-
-		mutatingWebhookConfiguration = &v1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: MutatingWebhookConfigurationName,
-				Labels: map[string]string{
-					"app.kubernetes.io/managed-by": "image-operator",
+	if err := r.Get(ctx, mutatingWebhookConfigurationKey, mutatingWebhookConfiguration); err != nil {
+		if errors.IsNotFound(err) {
+			mutatingWebhookConfiguration := &v1.MutatingWebhookConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: MutatingWebhookConfigurationName,
+					Labels: map[string]string{
+						"app.kubernetes.io/managed-by": "image-operator",
+					},
 				},
-			},
-			Webhooks: []v1.MutatingWebhook{createMutatingWebhook(name, spec)},
+				Webhooks: []v1.MutatingWebhook{createMutatingWebhook(name, spec)},
+			}
+
+			return r.Create(ctx, mutatingWebhookConfiguration)
 		}
 
-		_, err := r.clientset.
-			AdmissionregistrationV1().
-			MutatingWebhookConfigurations().
-			Create(ctx, mutatingWebhookConfiguration, metav1.CreateOptions{})
-
-		if err != nil {
-			ctrl.Log.Error(err, "setRule: failed to create mutatingWebhookConfiguration")
-			return err
-		}
-
-		return nil
+		return err
 	}
 
 	var patches []map[string]any
@@ -79,38 +68,14 @@ func (r *RuleReconciler) setRule(ctx context.Context, name string, spec apiv1.Ru
 
 	jsonPatch, _ := json.Marshal(patches)
 
-	_, err = r.clientset.
-		AdmissionregistrationV1().
-		MutatingWebhookConfigurations().
-		Patch(
-			ctx,
-			MutatingWebhookConfigurationName,
-			types.JSONPatchType,
-			jsonPatch,
-			metav1.PatchOptions{},
-		)
-
-	if err != nil {
-		ctrl.Log.Error(err, "setRule: failed to patch mutatingWebhookConfiguration", "rule", name)
-		return err
-	}
-
-	return nil
+	return r.Patch(ctx, mutatingWebhookConfiguration, client.RawPatch(types.JSONPatchType, jsonPatch))
 }
 
-func (r *RuleReconciler) deleteRule(ctx context.Context, name string) error {
-	mutatingWebhookConfiguration, err := r.clientset.
-		AdmissionregistrationV1().
-		MutatingWebhookConfigurations().
-		Get(ctx, MutatingWebhookConfigurationName, metav1.GetOptions{})
+func (r *RuleReconciler) delete(ctx context.Context, name string) error {
+	mutatingWebhookConfiguration := &v1.MutatingWebhookConfiguration{}
 
-	if err != nil {
-		ctrl.Log.Error(err, "deleteRule: failed to get mutatingWebhookConfiguration")
-		if errors.IsNotFound(err) {
-			return nil
-		}
-
-		return err
+	if err := r.Get(ctx, mutatingWebhookConfigurationKey, mutatingWebhookConfiguration); err != nil {
+		return client.IgnoreNotFound(err)
 	}
 
 	index := slices.IndexFunc(mutatingWebhookConfiguration.Webhooks, func(webhook v1.MutatingWebhook) bool {
@@ -122,38 +87,16 @@ func (r *RuleReconciler) deleteRule(ctx context.Context, name string) error {
 	}
 
 	if len(mutatingWebhookConfiguration.Webhooks) == 1 {
-		err := r.clientset.
-			AdmissionregistrationV1().
-			MutatingWebhookConfigurations().
-			Delete(ctx, MutatingWebhookConfigurationName, metav1.DeleteOptions{})
-
-		if err != nil {
-			ctrl.Log.Error(err, "deleteRule: failed to delete mutatingWebhookConfiguration")
-			return err
-		}
-
-		return nil
+		return r.Delete(ctx, mutatingWebhookConfiguration)
 	}
 
 	patches := fmt.Sprintf(`[{"op":"remove","path":"/webhooks/%d"}]`, index)
 
-	_, err = r.clientset.
-		AdmissionregistrationV1().
-		MutatingWebhookConfigurations().
-		Patch(
-			ctx,
-			MutatingWebhookConfigurationName,
-			types.JSONPatchType,
-			[]byte(patches),
-			metav1.PatchOptions{},
-		)
-
-	if err != nil {
-		ctrl.Log.Error(err, "deleteRule: failed to patch mutatingWebhookConfiguration", "rule", name)
-		return err
-	}
-
-	return nil
+	return r.Patch(
+		ctx,
+		mutatingWebhookConfiguration,
+		client.RawPatch(types.JSONPatchType, []byte(patches)),
+	)
 }
 
 func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook {
