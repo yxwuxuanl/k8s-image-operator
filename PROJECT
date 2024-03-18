@@ -17,4 +17,8 @@ resources:
   kind: Rule
   path: github.com/yxwuxuanl/k8s-image-operator/api/v1
   version: v1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 version: "3"

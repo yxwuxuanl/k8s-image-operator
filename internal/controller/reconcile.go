@@ -3,19 +3,15 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	apiv1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
+	"github.com/yxwuxuanl/k8s-image-operator/internal/utils"
 	v1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"slices"
-)
-
-var (
-	excludeOperatorNamespace = flag.Bool("exclude-operator-namespace", true, "")
 )
 
 const MutatingWebhookConfigurationName = "image-operator"
@@ -100,21 +96,7 @@ func (r *RuleReconciler) delete(ctx context.Context, name string) error {
 }
 
 func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook {
-	namespaceSelector := spec.NamespaceSelector
-
-	if *excludeOperatorNamespace {
-		if namespaceSelector == nil {
-			namespaceSelector = new(metav1.LabelSelector)
-		}
-
-		namespaceSelector.MatchExpressions = append(namespaceSelector.MatchExpressions, metav1.LabelSelectorRequirement{
-			Key:      "kubernetes.io/metadata.name",
-			Operator: metav1.LabelSelectorOpNotIn,
-			Values:   []string{*namespace},
-		})
-	}
-
-	mutatingWebhook := v1.MutatingWebhook{
+	return v1.MutatingWebhook{
 		Name:                    getMutatingWebhookName(name),
 		ClientConfig:            createWebhookClientConfig(name),
 		AdmissionReviewVersions: []string{"v1"},
@@ -128,16 +110,12 @@ func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook 
 				},
 			},
 		},
-		NamespaceSelector: namespaceSelector,
+		NamespaceSelector: spec.NamespaceSelector,
 		ObjectSelector:    spec.PodSelector,
+		FailurePolicy:     spec.FailurePolicy,
+		TimeoutSeconds:    utils.ToPtr(int32(5)),
+		SideEffects:       utils.ToPtr(v1.SideEffectClassNone),
 	}
-
-	mutatingWebhook.SideEffects = valueOrDefault(nil, v1.SideEffectClassNone)
-
-	mutatingWebhook.FailurePolicy = valueOrDefault(spec.MutatingWebhookSpec.FailurePolicy, v1.Ignore)
-	mutatingWebhook.TimeoutSeconds = valueOrDefault(spec.MutatingWebhookSpec.TimeoutSeconds, 5)
-
-	return mutatingWebhook
 }
 
 func valueOrDefault[T any](n *T, defaultValue T) *T {

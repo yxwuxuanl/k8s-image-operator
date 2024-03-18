@@ -32,9 +32,9 @@ type RuleSpec struct {
 	Rules          []RewriteRule `json:"rules"`
 	DisallowedTags []string      `json:"disallowedTags"`
 
-	NamespaceSelector   *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
-	PodSelector         *metav1.LabelSelector `json:"podSelector,omitempty"`
-	MutatingWebhookSpec v1.MutatingWebhook    `json:"webhookSpec,omitempty"`
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+	PodSelector       *metav1.LabelSelector `json:"podSelector,omitempty"`
+	FailurePolicy     *v1.FailurePolicyType `json:"failurePolicy,omitempty"`
 }
 
 type RewriteRule struct {

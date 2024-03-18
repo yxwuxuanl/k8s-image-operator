@@ -86,6 +86,9 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 		admissionResponse := &admissionv1.AdmissionResponse{
 			Allowed: true,
 			UID:     admissionReview.Request.UID,
+			Result: &metav1.Status{
+				Code: http.StatusOK,
+			},
 		}
 
 		defer func() {
@@ -117,6 +120,7 @@ func createWebhookHandler(name string, spec apiv1.RuleSpec) http.HandlerFunc {
 				if hasDisallowedTag {
 					admissionResponse.Allowed = false
 					admissionResponse.Result = &metav1.Status{
+						Code:   http.StatusForbidden,
 						Reason: "ImageTagNotAllowed",
 						Message: fmt.Sprintf(
 							"[%s] tags is not allowed in %s: %s",
