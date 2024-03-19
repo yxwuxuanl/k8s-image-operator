@@ -21,34 +21,41 @@ import (
 	"errors"
 	"flag"
 	imagev1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
+	"github.com/yxwuxuanl/k8s-image-operator/internal/utils"
 	v1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"net"
+	"net/http"
 	"os"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strconv"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"strings"
+	"sync"
 )
 
 var (
-	namespace     = flag.String("namespace", os.Getenv("NAMESPACE"), "")
-	serviceName   = flag.String("service", "", "")
-	tlsCACertFile = flag.String("tls.ca-cert-file", "./tls/ca", "")
+	namespace   = flag.String("namespace", os.Getenv("NAMESPACE"), "")
+	serviceName = flag.String("service", "", "")
 )
 
 // RuleReconciler reconciles a Rule object
 type RuleReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme  *runtime.Scheme
+	decoder *admission.Decoder
+
+	rules map[string]imagev1.RuleSpec
+	mux   sync.RWMutex
 }
 
-//+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules,verbs=get;list;watch
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules/finalizers,verbs=update
-//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create
-//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=*,resourceNames=image-operator
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create;list;watch
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=get;delete;patch,resourceNames=image-operator
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -72,15 +79,11 @@ func (r *RuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				return ctrl.Result{}, err
 			}
 
-			setWebhookHandler(req.Name, nil)
-
 			return ctrl.Result{}, nil
 		}
 
 		return ctrl.Result{}, err
 	}
-
-	setWebhookHandler(req.Name, createWebhookHandler(req.Name, rule.Spec))
 
 	if err := r.set(ctx, rule.Name, rule.Spec); err != nil {
 		return ctrl.Result{}, err
@@ -90,7 +93,7 @@ func (r *RuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager, caCertFile string) error {
 	if *namespace == "" {
 		return errors.New("`--namespace` is required")
 	}
@@ -99,16 +102,7 @@ func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return errors.New("`--service` is required")
 	}
 
-	var servicePort int32
-
-	if _, v, err := net.SplitHostPort(*webhookAddr); err == nil {
-		v, _ := strconv.ParseInt(v, 10, 32)
-		servicePort = int32(v)
-	} else {
-		return err
-	}
-
-	caCert, err := os.ReadFile(*tlsCACertFile)
+	caCert, err := os.ReadFile(caCertFile)
 	if err != nil {
 		return err
 	}
@@ -117,10 +111,23 @@ func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Service: &v1.ServiceReference{
 			Namespace: *namespace,
 			Name:      *serviceName,
-			Port:      &servicePort,
+			Port: utils.ToPtr(int32(webhook.DefaultPort)),
 		},
 		CABundle: caCert,
 	}
+
+	r.decoder = admission.NewDecoder(mgr.GetScheme())
+	r.rules = make(map[string]imagev1.RuleSpec)
+
+	mgr.GetWebhookServer().Register("/mutate-pod/", &webhook.Admission{
+		Handler: r,
+		WithContextFunc: func(ctx context.Context, r *http.Request) context.Context {
+			return context.WithValue(
+				ctx, ruleNameCtxKey,
+				strings.TrimPrefix(r.URL.Path, "/mutate-pod/"),
+			)
+		},
+	})
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&imagev1.Rule{}).

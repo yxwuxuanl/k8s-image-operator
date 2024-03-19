@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"path"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -70,6 +71,12 @@ func main() {
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
+
+	tlsCertDir := flag.String("tls.cert-dir", "./tls", "")
+	tlsCertFile := flag.String("tls.cert-file", "tls.crt", "")
+	tlsKeyFile := flag.String("tls.key-file", "tls.key", "")
+	tlsCaFile := flag.String("tls.ca-file", "ca.crt", "")
+
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
@@ -91,7 +98,10 @@ func main() {
 	}
 
 	webhookServer := webhook.NewServer(webhook.Options{
-		TLSOpts: tlsOpts,
+		TLSOpts:  tlsOpts,
+		CertDir:  *tlsCertDir,
+		CertName: *tlsCertFile,
+		KeyName:  *tlsKeyFile,
 	})
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -125,7 +135,7 @@ func main() {
 	if err = (&controller.RuleReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, path.Join(*tlsCertDir, *tlsCaFile)); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Rule")
 		os.Exit(1)
 	}
@@ -146,7 +156,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	go controller.StartWebhookServer()
+	//go controller.StartWebhookServer()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

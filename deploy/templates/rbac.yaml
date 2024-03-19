@@ -34,4 +34,7 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  name: {{ .Release.Name }}-manager-role
+  {{- if false }}
   name: {{ .Release.Name }}-controller
+  {{- end }}

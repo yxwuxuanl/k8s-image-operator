@@ -6,6 +6,7 @@ import (
 	"fmt"
 	apiv1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
 	"github.com/yxwuxuanl/k8s-image-operator/internal/utils"
+	"gomodules.xyz/jsonpatch/v2"
 	v1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,6 +23,10 @@ var (
 )
 
 func (r *RuleReconciler) set(ctx context.Context, name string, spec apiv1.RuleSpec) error {
+	r.mux.Lock()
+	r.rules[name] = spec
+	r.mux.Unlock()
+
 	mutatingWebhookConfiguration := &v1.MutatingWebhookConfiguration{}
 
 	if err := r.Get(ctx, mutatingWebhookConfigurationKey, mutatingWebhookConfiguration); err != nil {
@@ -42,23 +47,23 @@ func (r *RuleReconciler) set(ctx context.Context, name string, spec apiv1.RuleSp
 		return err
 	}
 
-	var patches []map[string]any
+	var patches []jsonpatch.JsonPatchOperation
 
 	index := slices.IndexFunc(mutatingWebhookConfiguration.Webhooks, func(webhook v1.MutatingWebhook) bool {
 		return webhook.Name == getMutatingWebhookName(name)
 	})
 
 	if index >= 0 {
-		patches = append(patches, map[string]any{
-			"op":    "replace",
-			"path":  fmt.Sprintf("/webhooks/%d", index),
-			"value": createMutatingWebhook(name, spec),
+		patches = append(patches, jsonpatch.JsonPatchOperation{
+			Operation: "replace",
+			Path:      fmt.Sprintf("/webhooks/%d", index),
+			Value:     createMutatingWebhook(name, spec),
 		})
 	} else {
-		patches = append(patches, map[string]any{
-			"op":    "add",
-			"path":  "/webhooks/-",
-			"value": createMutatingWebhook(name, spec),
+		patches = append(patches, jsonpatch.JsonPatchOperation{
+			Operation: "add",
+			Path:      "/webhooks/-",
+			Value:     createMutatingWebhook(name, spec),
 		})
 	}
 
@@ -68,6 +73,12 @@ func (r *RuleReconciler) set(ctx context.Context, name string, spec apiv1.RuleSp
 }
 
 func (r *RuleReconciler) delete(ctx context.Context, name string) error {
+	defer func() {
+		r.mux.Lock()
+		defer r.mux.Unlock()
+		delete(r.rules, name)
+	}()
+
 	mutatingWebhookConfiguration := &v1.MutatingWebhookConfiguration{}
 
 	if err := r.Get(ctx, mutatingWebhookConfigurationKey, mutatingWebhookConfiguration); err != nil {
@@ -118,18 +129,10 @@ func createMutatingWebhook(name string, spec apiv1.RuleSpec) v1.MutatingWebhook 
 	}
 }
 
-func valueOrDefault[T any](n *T, defaultValue T) *T {
-	if n != nil {
-		return n
-	}
-
-	return &defaultValue
-}
-
 func createWebhookClientConfig(name string) v1.WebhookClientConfig {
 	conf := webhookClientConfig
 
-	name = "/" + name
+	name = "/mutate-pod/" + name
 	conf.Service.Path = &name
 
 	return conf

@@ -25,13 +25,16 @@ spec:
         - name: {{ .Release.Name }}-controller
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           imagePullPolicy: IfNotPresent
-          workingDir: /
           volumeMounts:
             - mountPath: /tls
               name: tls
           args:
             - --namespace={{ .Release.Namespace }}
             - --service={{ .Release.Name }}-controller
+            - --tls.cert-dir=/tls
+            - --tls.cert-file=cert
+            - --tls.key-file=key
+            - --tls.ca-file=ca
       restartPolicy: Always
 
 ---
