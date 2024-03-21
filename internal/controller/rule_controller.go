@@ -111,7 +111,7 @@ func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager, caCertFile string) e
 		Service: &v1.ServiceReference{
 			Namespace: *namespace,
 			Name:      *serviceName,
-			Port: utils.ToPtr(int32(webhook.DefaultPort)),
+			Port:      utils.ToPtr(int32(webhook.DefaultPort)),
 		},
 		CABundle: caCert,
 	}

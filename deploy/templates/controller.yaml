@@ -47,6 +47,6 @@ spec:
     app: {{ .Release.Name }}-controller
   ports:
     - protocol: TCP
-      port: 443
-      targetPort: 443
+      port: 9443
+      targetPort: 9443
   type: ClusterIP

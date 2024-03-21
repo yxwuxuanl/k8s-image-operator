@@ -7,20 +7,48 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ .Release.Name }}-controller
+  name: {{ .Release.Name }}-manager-role
 rules:
-  - verbs:
-      - '*'
-    apiGroups:
-      - image.lin2ur.cn
-    resources:
-      - rules
-  - verbs:
-      - '*'
-    apiGroups:
+  - apiGroups:
       - admissionregistration.k8s.io
     resources:
       - mutatingwebhookconfigurations
+    verbs:
+      - create
+      - list
+      - watch
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resourceNames:
+      - image-operator
+    resources:
+      - mutatingwebhookconfigurations
+    verbs:
+      - delete
+      - get
+      - patch
+  - apiGroups:
+      - image.lin2ur.cn
+    resources:
+      - rules
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - image.lin2ur.cn
+    resources:
+      - rules/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - image.lin2ur.cn
+    resources:
+      - rules/status
+    verbs:
+      - get
+      - patch
+      - update
 
 ---
 kind: ClusterRoleBinding
@@ -35,6 +63,3 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ .Release.Name }}-manager-role
-  {{- if false }}
-  name: {{ .Release.Name }}-controller
-  {{- end }}
