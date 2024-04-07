@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	v12 "github.com/google/go-containerregistry/pkg/v1"
+	containerregistryv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/imdario/mergo"
 	imagev1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
 	"gomodules.xyz/jsonpatch/v2"
@@ -115,7 +115,7 @@ func buildMutateHandler(decoder *admission.Decoder, rule imagev1.Rule) admission
 		}
 
 		var wg sync.WaitGroup
-		ch := make(chan []*v12.Platform, len(images))
+		ch := make(chan []*containerregistryv1.Platform, len(images))
 
 		timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
@@ -143,7 +143,7 @@ func buildMutateHandler(decoder *admission.Decoder, rule imagev1.Rule) admission
 			return admission.Patched("", patches...)
 		}
 
-		var platforms []*v12.Platform
+		var platforms []*containerregistryv1.Platform
 		for result := range ch {
 			platforms = intersection(platforms, result)
 		}
@@ -173,19 +173,17 @@ func buildMutateHandler(decoder *admission.Decoder, rule imagev1.Rule) admission
 			return
 		}
 
-		nodeSelectorTerm := corev1.NodeSelectorTerm{
-			MatchExpressions: []corev1.NodeSelectorRequirement{
-				{
-					Key:      "kubernetes.io/arch",
-					Operator: corev1.NodeSelectorOpIn,
-					Values:   arch,
-				},
-			},
-		}
-
 		affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
 			affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-			nodeSelectorTerm,
+			corev1.NodeSelectorTerm{
+				MatchExpressions: []corev1.NodeSelectorRequirement{
+					{
+						Key:      "kubernetes.io/arch",
+						Operator: corev1.NodeSelectorOpIn,
+						Values:   arch,
+					},
+				},
+			},
 		)
 
 		patches = append(patches, jsonpatch.JsonPatchOperation{
@@ -266,20 +264,13 @@ func getEnvOrDie(name string) string {
 	return value
 }
 
-func deref[T any](v *T) *T {
-	if v != nil {
-		return v
-	}
-	return new(T)
-}
-
-func intersection(a, b []*v12.Platform) []*v12.Platform {
+func intersection(a, b []*containerregistryv1.Platform) []*containerregistryv1.Platform {
 	if len(a) == 0 {
 		return b
 	}
 
 	m := make(map[string]bool)
-	result := make([]*v12.Platform, 0)
+	result := make([]*containerregistryv1.Platform, 0)
 
 	for _, item := range a {
 		m[item.String()] = true
@@ -295,7 +286,7 @@ func intersection(a, b []*v12.Platform) []*v12.Platform {
 	return result
 }
 
-func getArch(platform *v12.Platform) string {
+func getArch(platform *containerregistryv1.Platform) string {
 	switch true {
 	case platform.Architecture == "arm" && platform.Variant == "v7":
 		return "arm64"
