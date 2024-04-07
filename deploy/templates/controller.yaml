@@ -5,7 +5,7 @@ metadata:
   labels:
     app: {{ .Release.Name }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}
@@ -45,6 +45,8 @@ spec:
             - name: WEBHOOK_CERT_DIR
               value: /tls
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/arch: amd64
 
 ---
 apiVersion: v1
