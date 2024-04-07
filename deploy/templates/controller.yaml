@@ -1,50 +1,59 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-controller
+  name: {{ .Release.Name }}
   labels:
-    app: {{ .Release.Name }}-controller
+    app: {{ .Release.Name }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ .Release.Name }}-controller
+      app: {{ .Release.Name }}
   template:
     metadata:
-      name: {{ .Release.Name }}-controller
+      name: {{ .Release.Name }}
       labels:
-        app: {{ .Release.Name }}-controller
+        app: {{ .Release.Name }}
     spec:
       enableServiceLinks: false
-      serviceAccountName: {{ .Release.Name }}-controller
+      serviceAccountName: {{ .Release.Name }}
       volumes:
         - name: tls
           secret:
             secretName: {{ .Release.Name }}-webhook-tls
       containers:
-        - name: {{ .Release.Name }}-controller
+        - name: {{ .Release.Name }}
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           imagePullPolicy: IfNotPresent
           volumeMounts:
-            - mountPath: /tls
+            - mountPath: /tls/tls.crt
               name: tls
-          args:
-            - --namespace={{ .Release.Namespace }}
-            - --service={{ .Release.Name }}-controller
-            - --tls.cert-dir=/tls
-            - --tls.cert-file=cert
-            - --tls.key-file=key
-            - --tls.ca-file=ca
+              subPath: cert
+            - mountPath: /tls/tls.key
+              name: tls
+              subPath: key
+            - mountPath: /tls/ca.crt
+              name: tls
+              subPath: ca
+          env:
+            - name: WEBHOOK_CA_CERT_FILE
+              value: /tls/ca.crt
+            - name: WEBHOOK_SERVICE_NAME
+              value: {{ .Release.Name }}
+            - name: WEBHOOK_SERVICE_NAMESPACE
+              value: {{ .Release.Namespace }}
+            - name: WEBHOOK_CERT_DIR
+              value: /tls
       restartPolicy: Always
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}-controller
+  name: {{ .Release.Name }}
 spec:
   selector:
-    app: {{ .Release.Name }}-controller
+    app: {{ .Release.Name }}
   ports:
     - protocol: TCP
       port: 9443

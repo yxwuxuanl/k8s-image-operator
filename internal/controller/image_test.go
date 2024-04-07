@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"context"
 	v1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
+	"log"
 	"testing"
 )
 
@@ -50,4 +52,12 @@ func TestRewriteImage(t *testing.T) {
 			t.Fatalf("test `%s` failed", test.raw)
 		}
 	}
+}
+
+func TestGetImagePlatform(t *testing.T) {
+	platform, err := getImagePlatform(context.Background(), "registry.cn-shenzhen.aliyuncs.com/lin2ur/v2ray-config:master-b7a9fe88")
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("%+v", platform)
 }

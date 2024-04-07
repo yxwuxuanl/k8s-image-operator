@@ -46,8 +46,7 @@ type RuleReconciler struct {
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules,verbs=get;list;watch
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules/finalizers,verbs=update
-//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create;list;watch
-//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=get;delete;patch,resourceNames=image-operator
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create;list;watch;get;delete;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

@@ -1,0 +1,70 @@
+{{- if and .Values.admissionWebhooks.enabled  .Values.admissionWebhooks.patch.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-create
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 0
+  template:
+    spec:
+      containers:
+        - name: create
+          image: '{{ .Values.admissionWebhooks.patch.image.repository }}:{{ .Values.admissionWebhooks.patch.image.tag }}'
+          imagePullPolicy: IfNotPresent
+          args:
+            - create
+            - --host={{ .Release.Name }},{{ .Release.Name }}.{{ .Release.Namespace }}.svc
+            - --namespace={{ .Release.Namespace }}
+            - --secret-name={{ .Release.Name }}-webhook-tls
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+      restartPolicy: Never
+      serviceAccountName: {{ .Release.Name }}-patch
+      securityContext:
+        runAsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 2000
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-patch
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 0
+  template:
+    spec:
+      containers:
+        - name: patch
+          image: '{{ .Values.admissionWebhooks.patch.image.repository }}:{{ .Values.admissionWebhooks.patch.image.tag }}'
+          imagePullPolicy: IfNotPresent
+          args:
+            - patch
+            - --webhook-name=image.lin2ur.cn-rule
+            - --patch-validating=true
+            - --patch-mutating=true
+            - --namespace={{ .Release.Namespace }}
+            - --secret-name={{ .Release.Name }}-webhook-tls
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+      restartPolicy: Never
+      serviceAccountName: {{ .Release.Name }}-patch
+      securityContext:
+        runAsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 2000
+{{- end }}

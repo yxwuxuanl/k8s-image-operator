@@ -1,3 +1,11 @@
 image:
   repository: registry.cn-shenzhen.aliyuncs.com/lin2ur/k8s-image-operator
   tag: dev
+
+admissionWebhooks:
+  enabled: true
+  patch:
+    image:
+      repository: rancher/mirrored-ingress-nginx-kube-webhook-certgen
+      tag: v20221220-controller-v1.5.1-58-g787ea74b6
+    enabled: true
