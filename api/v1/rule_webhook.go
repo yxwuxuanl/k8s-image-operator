@@ -18,10 +18,8 @@ package v1
 
 import (
 	"errors"
-	"fmt"
-	"github.com/yxwuxuanl/k8s-image-operator/internal/utils"
-	v1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"regexp"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -47,9 +45,6 @@ var _ webhook.Defaulter = &Rule{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *Rule) Default() {
-	if r.Spec.FailurePolicy == nil {
-		r.Spec.FailurePolicy = utils.ToPtr(v1.Ignore)
-	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -63,16 +58,18 @@ func (r *Rule) ValidateCreate() (admission.Warnings, error) {
 		return nil, errors.New("`rules` and `disallowedTags` cannot both be empty")
 	}
 
-	for _, rule := range r.Spec.Rules {
+	for i, rule := range r.Spec.Rules {
 		if rule.Regex != "" {
 			if _, err := regexp.Compile(rule.Regex); err != nil {
-				return nil, fmt.Errorf(
-					"failed to compile regexp: %s: %w",
-					rule.Regex, err,
+				return nil, field.Invalid(
+					field.NewPath("spec").Child("rules").Index(i).Key("regex"),
+					rule.Regex,
+					err.Error(),
 				)
 			}
 		}
 	}
+
 	return nil, nil
 }
 

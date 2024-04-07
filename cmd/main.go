@@ -20,8 +20,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
-	"path"
-
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -72,11 +70,6 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 
-	tlsCertDir := flag.String("tls.cert-dir", "./tls", "")
-	tlsCertFile := flag.String("tls.cert-file", "tls.crt", "")
-	tlsKeyFile := flag.String("tls.key-file", "tls.key", "")
-	tlsCaFile := flag.String("tls.ca-file", "ca.crt", "")
-
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
@@ -98,10 +91,8 @@ func main() {
 	}
 
 	webhookServer := webhook.NewServer(webhook.Options{
-		TLSOpts:  tlsOpts,
-		CertDir:  *tlsCertDir,
-		CertName: *tlsCertFile,
-		KeyName:  *tlsKeyFile,
+		TLSOpts: tlsOpts,
+		CertDir: os.Getenv("WEBHOOK_CERT_DIR"),
 	})
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -135,7 +126,7 @@ func main() {
 	if err = (&controller.RuleReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr, path.Join(*tlsCertDir, *tlsCaFile)); err != nil {
+	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Rule")
 		os.Exit(1)
 	}

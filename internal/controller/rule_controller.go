@@ -19,27 +19,20 @@ package controller
 import (
 	"context"
 	"errors"
-	"flag"
 	imagev1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
-	"github.com/yxwuxuanl/k8s-image-operator/internal/utils"
-	v1 "k8s.io/api/admissionregistration/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"net/http"
-	"os"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"slices"
 	"strings"
 	"sync"
 )
 
-var (
-	namespace   = flag.String("namespace", os.Getenv("NAMESPACE"), "")
-	serviceName = flag.String("service", "", "")
-)
+var ruleNameCtxKey = struct{}{}
 
 // RuleReconciler reconciles a Rule object
 type RuleReconciler struct {
@@ -47,8 +40,7 @@ type RuleReconciler struct {
 	Scheme  *runtime.Scheme
 	decoder *admission.Decoder
 
-	rules map[string]imagev1.RuleSpec
-	mux   sync.RWMutex
+	handlers sync.Map
 }
 
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=rules,verbs=get;list;watch
@@ -70,61 +62,57 @@ func (r *RuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	logger := log.FromContext(ctx)
 	logger.Info("Reconcile", "obj", req.Name)
 
-	rule := new(imagev1.Rule)
-
-	if err := r.Get(ctx, req.NamespacedName, rule); err != nil {
-		if apierrors.IsNotFound(err) {
-			if err := r.delete(ctx, req.Name); err != nil {
-				logger.Error(err, "failed to delete rule")
-				return ctrl.Result{}, err
-			}
-
-			return ctrl.Result{}, nil
-		}
-
+	var rules imagev1.RuleList
+	if err := r.List(ctx, &rules); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if err := r.set(ctx, rule.Name, rule.Spec); err != nil {
+	index := slices.IndexFunc(rules.Items, func(rule imagev1.Rule) bool {
+		return rule.Name == req.Name
+	})
+
+	if index >= 0 {
+		r.handlers.Store(req.Name, buildMutateHandler(r.decoder, rules.Items[index]))
+	} else {
+		r.handlers.Delete(req.Name)
+	}
+
+	if err := updateMutatingWebhookConfiguration(ctx, r.Client, rules.Items); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
+func (r *RuleReconciler) Handle(ctx context.Context, request admission.Request) admission.Response {
+	ruleName, ok := ctx.Value(ruleNameCtxKey).(string)
+	if !ok {
+		return admission.Errored(http.StatusBadRequest, errors.New("rule name not found"))
+	}
+
+	if v, ok := r.handlers.Load(ruleName); ok {
+		return v.(admission.Handler).Handle(ctx, request)
+	}
+
+	return admission.Allowed("")
+}
+
 // SetupWithManager sets up the controller with the Manager.
-func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager, caCertFile string) error {
-	if *namespace == "" {
-		return errors.New("`--namespace` is required")
-	}
-
-	if *serviceName == "" {
-		return errors.New("`--service` is required")
-	}
-
-	caCert, err := os.ReadFile(caCertFile)
-	if err != nil {
-		return err
-	}
-
-	webhookClientConfig = v1.WebhookClientConfig{
-		Service: &v1.ServiceReference{
-			Namespace: *namespace,
-			Name:      *serviceName,
-			Port:      utils.ToPtr(int32(webhook.DefaultPort)),
-		},
-		CABundle: caCert,
-	}
-
+func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.decoder = admission.NewDecoder(mgr.GetScheme())
-	r.rules = make(map[string]imagev1.RuleSpec)
 
-	mgr.GetWebhookServer().Register("/mutate-pod/", &webhook.Admission{
+	mgr.GetWebhookServer().Register(WebhookPathPrefix, &webhook.Admission{
 		Handler: r,
 		WithContextFunc: func(ctx context.Context, r *http.Request) context.Context {
-			return context.WithValue(
-				ctx, ruleNameCtxKey,
-				strings.TrimPrefix(r.URL.Path, "/mutate-pod/"),
+			ctx = context.WithValue(
+				ctx,
+				ruleNameCtxKey,
+				strings.TrimPrefix(r.URL.Path, WebhookPathPrefix),
+			)
+
+			return log.IntoContext(
+				ctx,
+				ctrl.Log.WithValues("name", "webhook", "uri", r.RequestURI),
 			)
 		},
 	})

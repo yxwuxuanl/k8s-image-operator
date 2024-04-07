@@ -17,7 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,12 +28,16 @@ type RuleSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Rules          []RewriteRule `json:"rules"`
-	DisallowedTags []string      `json:"disallowedTags"`
+	Rules          []RewriteRule `json:"rules,omitempty"`
+	DisallowedTags []string      `json:"disallowedTags,omitempty"`
 
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
 	PodSelector       *metav1.LabelSelector `json:"podSelector,omitempty"`
-	FailurePolicy     *v1.FailurePolicyType `json:"failurePolicy,omitempty"`
+
+	// +kubebuilder:default="Ignore"
+	FailurePolicy string `json:"failurePolicy,omitempty"`
+
+	SetArchNodeAffinity bool `json:"setArchNodeAffinity"`
 }
 
 type RewriteRule struct {

@@ -44,8 +44,7 @@ spec:
                     type: string
                   type: array
                 failurePolicy:
-                  description: FailurePolicyType specifies a failure policy that defines
-                    how unrecognized errors from the admission endpoint are handled.
+                  default: Ignore
                   type: string
                 namespaceSelector:
                   description: |-
@@ -154,9 +153,10 @@ spec:
                       - replacement
                     type: object
                   type: array
+                setArchNodeAffinity:
+                  type: boolean
               required:
-                - disallowedTags
-                - rules
+                - setArchNodeAffinity
               type: object
             status:
               description: RuleStatus defines the observed state of Rule

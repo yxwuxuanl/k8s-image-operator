@@ -21,7 +21,6 @@ limitations under the License.
 package v1
 
 import (
-	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -122,11 +121,6 @@ func (in *RuleSpec) DeepCopyInto(out *RuleSpec) {
 		in, out := &in.PodSelector, &out.PodSelector
 		*out = new(metav1.LabelSelector)
 		(*in).DeepCopyInto(*out)
-	}
-	if in.FailurePolicy != nil {
-		in, out := &in.FailurePolicy, &out.FailurePolicy
-		*out = new(admissionregistrationv1.FailurePolicyType)
-		**out = **in
 	}
 }
 
