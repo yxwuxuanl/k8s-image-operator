@@ -5,10 +5,12 @@ metadata:
   labels:
     app: {{ .Release.Name }}
 spec:
-  replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
   template:
     metadata:
       name: {{ .Release.Name }}
@@ -44,6 +46,27 @@ spec:
               value: {{ .Release.Namespace }}
             - name: WEBHOOK_CERT_DIR
               value: /tls
+          ports:
+            - containerPort: 9443
+              name: https
+            - containerPort: 8081
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: healthz
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 5
       restartPolicy: Always
       nodeSelector:
         kubernetes.io/arch: amd64
@@ -59,5 +82,5 @@ spec:
   ports:
     - protocol: TCP
       port: 9443
-      targetPort: 9443
+      targetPort: https
   type: ClusterIP

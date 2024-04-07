@@ -2,8 +2,6 @@ image:
   repository: registry.cn-shenzhen.aliyuncs.com/lin2ur/k8s-image-operator
   tag: dev
 
-replicas: 2
-
 admissionWebhooks:
   enabled: true
   patch:
