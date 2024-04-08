@@ -233,7 +233,7 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 			Value:     affinity,
 		},
 		{
-			Operation: "add",
+			Operation: "replace",
 			Path:      "/metadata/annotations/" + strings.ReplaceAll(SetArchAnnotation, "/", "~1"),
 			Value:     "true",
 		},
