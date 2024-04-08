@@ -26,13 +26,14 @@ import (
 )
 
 const WebhookPathPrefix = "/mutate-pod/"
+const SetArchAnnotation = "image.lin2ur.cn/set-arch-affinity"
 
 var webhookClientConfig admissionregistrationv1.WebhookClientConfig
 
-func init() {
+func initWebhookClientConfig() error {
 	caCert, err := os.ReadFile(getEnvOrDie("WEBHOOK_CA_CERT_FILE"))
 	if err != nil {
-		panic("failed to read CA cert file: " + err.Error())
+		return fmt.Errorf("failed to read CA cert file: %w", err)
 	}
 
 	webhookClientConfig = admissionregistrationv1.WebhookClientConfig{
@@ -43,6 +44,8 @@ func init() {
 			Port:      ptr.To(int32(webhook.DefaultPort)),
 		},
 	}
+
+	return nil
 }
 
 func buildMutateHandler(decoder *admission.Decoder, rule imagev1.Rule) admission.HandlerFunc {
@@ -114,86 +117,124 @@ func buildMutateHandler(decoder *admission.Decoder, rule imagev1.Rule) admission
 			return admission.Patched("", patches...)
 		}
 
-		var wg sync.WaitGroup
-		ch := make(chan []*containerregistryv1.Platform, len(images))
-
-		timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-
-		for _, image := range images {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-
-				imagePlatform, err := getImagePlatform(timeout, image)
-				if err != nil {
-					logger.Error(err, "failed to get image platform", "image", image)
-				}
-
-				if len(imagePlatform) > 0 {
-					ch <- imagePlatform
-				}
-			}()
+		if affinityPatches, err := buildArchAffinityPatches(ctx, pod, images); err != nil {
+			log.FromContext(ctx).Error(err, "failed to build arch affinity patches")
+		} else {
+			patches = append(patches, affinityPatches...)
 		}
-
-		wg.Wait()
-		close(ch)
-
-		if len(ch) == 0 {
-			return admission.Patched("", patches...)
-		}
-
-		var platforms []*containerregistryv1.Platform
-		for result := range ch {
-			platforms = intersection(platforms, result)
-		}
-
-		var arch []string
-		for _, platform := range platforms {
-			if platform.OS == "linux" {
-				arch = append(arch, getArch(platform))
-			}
-		}
-
-		affinity := pod.Spec.Affinity
-		if affinity == nil {
-			affinity = &corev1.Affinity{}
-		}
-
-		err := mergo.Merge(affinity, &corev1.Affinity{
-			NodeAffinity: &corev1.NodeAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-					NodeSelectorTerms: []corev1.NodeSelectorTerm{},
-				},
-			},
-		})
-
-		if err != nil {
-			logger.Error(err, "failed to merge affinity")
-			return
-		}
-
-		affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-			affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-			corev1.NodeSelectorTerm{
-				MatchExpressions: []corev1.NodeSelectorRequirement{
-					{
-						Key:      "kubernetes.io/arch",
-						Operator: corev1.NodeSelectorOpIn,
-						Values:   arch,
-					},
-				},
-			},
-		)
-
-		patches = append(patches, jsonpatch.JsonPatchOperation{
-			Operation: "replace",
-			Path:      "/spec/affinity",
-			Value:     affinity,
-		})
 
 		return admission.Patched("", patches...)
 	}
+}
+
+func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []string) ([]jsonpatch.JsonPatchOperation, error) {
+	if pod.Annotations != nil && pod.Annotations[SetArchAnnotation] == "true" {
+		return nil, nil
+	}
+
+	var wg sync.WaitGroup
+	ch := make(chan []*containerregistryv1.Platform, len(images))
+
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	for _, image := range images {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			imagePlatform, err := getImagePlatform(timeout, image)
+			if err != nil {
+				log.FromContext(ctx).Error(err, "failed to get image platform", "image", image)
+				return
+			}
+
+			if len(imagePlatform) > 0 {
+				ch <- imagePlatform
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(ch)
+
+	if len(ch) == 0 {
+		return nil, nil
+	}
+
+	var platforms []*containerregistryv1.Platform
+	for v := range ch {
+		platforms = intersection(platforms, v)
+	}
+
+	var (
+		oss  []string
+		arch []string
+	)
+
+	for _, platform := range platforms {
+		oss = append(oss, platform.OS)
+		arch = append(arch, getArch(platform))
+	}
+
+	affinity := pod.Spec.Affinity
+	if affinity == nil {
+		affinity = &corev1.Affinity{}
+	}
+
+	err := mergo.Merge(affinity, &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{},
+			},
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	matchExpressions := []corev1.NodeSelectorRequirement{
+		{
+			Key:      "kubernetes.io/arch",
+			Operator: corev1.NodeSelectorOpIn,
+			Values:   arch,
+		},
+		{
+			Key:      "kubernetes.io/os",
+			Operator: corev1.NodeSelectorOpIn,
+			Values:   oss,
+		},
+	}
+
+	if len(affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) > 0 {
+		affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+			affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+			matchExpressions...,
+		)
+	} else {
+		affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+			affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+			corev1.NodeSelectorTerm{
+				MatchExpressions: matchExpressions,
+			},
+		)
+	}
+
+	patches := []jsonpatch.JsonPatchOperation{
+		{
+			Operation: "replace",
+			Path:      "/spec/affinity",
+			Value:     affinity,
+		},
+		{
+			Operation: "add",
+			Path:      "/metadata/annotations/" + strings.ReplaceAll(SetArchAnnotation, "/", "~1"),
+			Value:     "true",
+		},
+	}
+
+	return patches, nil
 }
 
 func updateMutatingWebhookConfiguration(ctx context.Context, cli client.Client, rules []imagev1.Rule) error {
