@@ -173,8 +173,13 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 	)
 
 	for _, platform := range platforms {
-		oss = append(oss, platform.OS)
-		arch = append(arch, getArch(platform))
+		if !slices.Contains(oss, platform.OS) {
+			oss = append(oss, platform.OS)
+		}
+
+		if !slices.Contains(arch, getArch(platform)) {
+			arch = append(arch, getArch(platform))
+		}
 	}
 
 	affinity := pod.Spec.Affinity
