@@ -128,9 +128,24 @@ func buildMutateHandler(decoder *admission.Decoder, rule imagev1.Rule) admission
 }
 
 func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []string) ([]jsonpatch.JsonPatchOperation, error) {
-	if pod.Annotations != nil && pod.Annotations[SetArchAnnotation] == "true" {
-		return nil, nil
+	annotations := pod.Annotations
+
+	if annotations != nil {
+		if pod.Annotations[SetArchAnnotation] == "true" {
+			return nil, nil
+		}
+	} else {
+		annotations = make(map[string]string)
 	}
+
+	annotations[SetArchAnnotation] = "true"
+
+	var patches []jsonpatch.JsonPatchOperation
+	patches = append(patches, jsonpatch.JsonPatchOperation{
+		Operation: "replace",
+		Path:      "/metadata/annotations",
+		Value:     annotations,
+	})
 
 	var wg sync.WaitGroup
 	ch := make(chan []*containerregistryv1.Platform, len(images))
@@ -226,18 +241,11 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 		)
 	}
 
-	patches := []jsonpatch.JsonPatchOperation{
-		{
-			Operation: "replace",
-			Path:      "/spec/affinity",
-			Value:     affinity,
-		},
-		{
-			Operation: "replace",
-			Path:      "/metadata/annotations/" + strings.ReplaceAll(SetArchAnnotation, "/", "~1"),
-			Value:     "true",
-		},
-	}
+	patches = append(patches, jsonpatch.JsonPatchOperation{
+		Operation: "replace",
+		Path:      "/spec/affinity",
+		Value:     affinity,
+	})
 
 	return patches, nil
 }
