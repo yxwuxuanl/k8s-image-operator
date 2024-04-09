@@ -69,7 +69,7 @@ spec:
             failureThreshold: 5
       restartPolicy: Always
       nodeSelector:
-        kubernetes.io/arch: amd64
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
 
 ---
 apiVersion: v1
