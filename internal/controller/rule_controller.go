@@ -107,15 +107,10 @@ func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	mgr.GetWebhookServer().Register(WebhookPathPrefix, &webhook.Admission{
 		Handler: r,
 		WithContextFunc: func(ctx context.Context, r *http.Request) context.Context {
-			ctx = context.WithValue(
+			return context.WithValue(
 				ctx,
 				ruleNameCtxKey,
 				strings.TrimPrefix(r.URL.Path, WebhookPathPrefix),
-			)
-
-			return log.IntoContext(
-				ctx,
-				ctrl.Log.WithValues("name", "webhook", "uri", r.RequestURI),
 			)
 		},
 	})

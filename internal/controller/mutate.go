@@ -148,10 +148,12 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 	})
 
 	var wg sync.WaitGroup
-	ch := make(chan []*containerregistryv1.Platform, len(images))
 
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+
+	var mux sync.Mutex
+	platformMap := make(map[string]int)
 
 	for _, image := range images {
 		wg.Add(1)
@@ -164,30 +166,32 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 				return
 			}
 
-			if len(imagePlatform) > 0 {
-				ch <- imagePlatform
+			mux.Lock()
+			defer mux.Unlock()
+
+			for _, platform := range imagePlatform {
+				if _, ok := platformMap[platform.String()]; !ok {
+					platformMap[platform.String()] = 1
+				} else {
+					platformMap[platform.String()]++
+				}
 			}
 		}()
 	}
 
 	wg.Wait()
-	close(ch)
-
-	if len(ch) == 0 {
-		return nil, nil
-	}
-
-	var platforms []*containerregistryv1.Platform
-	for v := range ch {
-		platforms = intersection(platforms, v)
-	}
 
 	var (
 		oss  []string
 		arch []string
 	)
 
-	for _, platform := range platforms {
+	for s, n := range platformMap {
+		if n < len(images) {
+			continue
+		}
+
+		platform, _ := containerregistryv1.ParsePlatform(s)
 		if !slices.Contains(oss, platform.OS) {
 			oss = append(oss, platform.OS)
 		}
@@ -316,28 +320,6 @@ func getEnvOrDie(name string) string {
 		panic("missing required environment variable " + name)
 	}
 	return value
-}
-
-func intersection(a, b []*containerregistryv1.Platform) []*containerregistryv1.Platform {
-	if len(a) == 0 {
-		return b
-	}
-
-	m := make(map[string]bool)
-	result := make([]*containerregistryv1.Platform, 0)
-
-	for _, item := range a {
-		m[item.String()] = true
-	}
-
-	for _, item := range b {
-		if _, ok := m[item.String()]; ok {
-			delete(m, item.String())
-			result = append(result, item)
-		}
-	}
-
-	return result
 }
 
 func getArch(platform *containerregistryv1.Platform) string {

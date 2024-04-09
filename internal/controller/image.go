@@ -7,11 +7,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	containerregistryv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/types"
 	v1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/lru"
 	"regexp"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
 	"time"
@@ -30,7 +29,7 @@ func rewriteImage(image string, rules []v1.RewriteRule) (string, bool) {
 		if rule.Regex != "" {
 			re, err := regexp.Compile(rule.Regex)
 			if err != nil {
-				klog.ErrorS(err, "regexp compile failed", "regex", rule.Regex)
+				ctrl.Log.Error(err, "failed to compile regex", "regex", rule.Regex)
 				continue
 			}
 
@@ -99,8 +98,18 @@ func getImagePlatform(ctx context.Context, image string) ([]*containerregistryv1
 
 	var platforms []*containerregistryv1.Platform
 
-	switch descriptor.MediaType {
-	case types.OCIManifestSchema1, types.DockerManifestSchema2:
+	if imageIndex, err := descriptor.ImageIndex(); err == nil {
+		indexManifest, err := imageIndex.IndexManifest()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get index manifest: %w", err)
+		}
+
+		for _, manifest := range indexManifest.Manifests {
+			if manifest.Platform.OS != "" && manifest.Platform.OS != "unknown" {
+				platforms = append(platforms, manifest.Platform)
+			}
+		}
+	} else {
 		image, err := descriptor.Image()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get image: %w", err)
@@ -112,22 +121,6 @@ func getImagePlatform(ctx context.Context, image string) ([]*containerregistryv1
 		}
 
 		platforms = append(platforms, configFile.Platform())
-	default:
-		imageIndex, err := descriptor.ImageIndex()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get image index: %w", err)
-		}
-
-		indexManifest, err := imageIndex.IndexManifest()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get index manifest: %w", err)
-		}
-
-		for _, manifest := range indexManifest.Manifests {
-			if manifest.Platform.OS != "unknown" {
-				platforms = append(platforms, manifest.Platform)
-			}
-		}
 	}
 
 	log.FromContext(ctx).Info(
