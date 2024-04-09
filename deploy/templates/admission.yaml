@@ -10,6 +10,7 @@ webhooks:
         name: {{ .Release.Name }}
         namespace: {{ .Release.Namespace }}
         path: /mutate-image-lin2ur-cn-v1-rule
+        port: 9443
     failurePolicy: Fail
     name: mrule.kb.io
     rules:
@@ -36,6 +37,7 @@ webhooks:
         name: {{ .Release.Name }}
         namespace: {{ .Release.Namespace }}
         path: /validate-image-lin2ur-cn-v1-rule
+        port: 9443
     failurePolicy: Fail
     name: vrule.kb.io
     rules:
