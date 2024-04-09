@@ -81,6 +81,6 @@ spec:
     app: {{ .Release.Name }}
   ports:
     - protocol: TCP
-      port: 9443
+      port: 443
       targetPort: https
   type: ClusterIP

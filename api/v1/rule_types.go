@@ -37,7 +37,7 @@ type RuleSpec struct {
 	// +kubebuilder:default="Ignore"
 	FailurePolicy string `json:"failurePolicy,omitempty"`
 
-	SetArchNodeAffinity bool `json:"setArchNodeAffinity"`
+	SetArchNodeAffinity bool `json:"setArchNodeAffinity,omitempty"`
 }
 
 type RewriteRule struct {

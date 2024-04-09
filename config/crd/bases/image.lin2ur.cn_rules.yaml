@@ -155,8 +155,6 @@ spec:
                   type: array
                 setArchNodeAffinity:
                   type: boolean
-              required:
-                - setArchNodeAffinity
               type: object
             status:
               description: RuleStatus defines the observed state of Rule
