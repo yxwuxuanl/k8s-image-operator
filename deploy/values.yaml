@@ -4,6 +4,10 @@ image:
 
 nodeSelector: { }
 
+mirror:
+  craneImage: registry.cn-shenzhen.aliyuncs.com/lin2ur/crane:0.19.1-alpine
+  cleanFinishedMirror: 30m
+
 admissionWebhooks:
   enabled: true
   patch:

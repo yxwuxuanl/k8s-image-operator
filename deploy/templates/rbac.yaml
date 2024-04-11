@@ -14,7 +14,63 @@ rules:
     resources:
       - mutatingwebhookconfigurations
     verbs:
-      - "*"
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - image.lin2ur.cn
+    resources:
+      - mirrors
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - image.lin2ur.cn
+    resources:
+      - mirrors/finalizers
+    verbs:
+      - update
+      - watch
+  - apiGroups:
+      - image.lin2ur.cn
+    resources:
+      - mirrors/status
+    verbs:
+      - get
+      - patch
+      - update
   - apiGroups:
       - image.lin2ur.cn
     resources:

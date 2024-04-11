@@ -51,3 +51,24 @@ webhooks:
         resources:
           - rules
     sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-image-lin2ur-cn-v1-mirror
+        port: 9443
+    failurePolicy: Fail
+    name: vmirror.kb.io
+    rules:
+      - apiGroups:
+          - image.lin2ur.cn
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - mirrors
+    sideEffects: None

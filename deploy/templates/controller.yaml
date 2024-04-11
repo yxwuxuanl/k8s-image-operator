@@ -51,6 +51,9 @@ spec:
               name: https
             - containerPort: 8081
               name: healthz
+          args:
+            - --crane-image={{ .Values.mirror.craneImage }}
+            - --clean-finished-mirror={{ .Values.mirror.cleanFinishedMirror }}
           livenessProbe:
             httpGet:
               path: /healthz
