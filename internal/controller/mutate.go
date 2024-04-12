@@ -147,13 +147,14 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 		Value:     annotations,
 	})
 
-	var wg sync.WaitGroup
-
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	var mux sync.Mutex
-	var platforms []string
+	var (
+		mux   sync.Mutex
+		archs []string
+		wg    sync.WaitGroup
+	)
 
 	for _, image := range images {
 		wg.Add(1)
@@ -166,34 +167,22 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 				return
 			}
 
-			var ps []string
+			var _archs []string
+
 			for _, platform := range imagePlatform {
-				ps = append(ps, platform.String())
+				_archs = append(_archs, getArch(platform))
 			}
 
 			mux.Lock()
 			defer mux.Unlock()
 
-			platforms = intersection(platforms, ps)
+			archs = intersection(archs, _archs)
 		}()
 	}
 
 	wg.Wait()
-
-	var (
-		oss  []string
-		arch []string
-	)
-
-	for _, s := range platforms {
-		platform, _ := containerregistryv1.ParsePlatform(s)
-		if !slices.Contains(oss, platform.OS) {
-			oss = append(oss, platform.OS)
-		}
-
-		if !slices.Contains(arch, getArch(platform)) {
-			arch = append(arch, getArch(platform))
-		}
+	if len(archs) == 0 {
+		return nil, nil
 	}
 
 	affinity := pod.Spec.Affinity
@@ -217,12 +206,7 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 		{
 			Key:      "kubernetes.io/arch",
 			Operator: corev1.NodeSelectorOpIn,
-			Values:   arch,
-		},
-		{
-			Key:      "kubernetes.io/os",
-			Operator: corev1.NodeSelectorOpIn,
-			Values:   oss,
+			Values:   archs,
 		},
 	}
 
