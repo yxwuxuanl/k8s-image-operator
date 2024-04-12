@@ -2,11 +2,21 @@ image:
   repository: registry.cn-shenzhen.aliyuncs.com/lin2ur/k8s-image-operator
   tag: dev
 
-nodeSelector: { }
+nodeSelector:
+  kubernetes.io/arch: amd64
 
 mirror:
   craneImage: registry.cn-shenzhen.aliyuncs.com/lin2ur/crane:0.19.1-alpine
   cleanFinishedMirror: 30m
+
+cfWorker:
+  enabled: false
+  images:
+    git: ''
+    wrangler: ''
+  accountId: ''
+  apiToken: ''
+  gitRepository: ''
 
 admissionWebhooks:
   enabled: true

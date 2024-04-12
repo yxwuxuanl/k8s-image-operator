@@ -46,13 +46,14 @@ spec:
               value: {{ .Release.Namespace }}
             - name: WEBHOOK_CERT_DIR
               value: /tls
+            - name: CRANE_IMAGE
+              value: {{ .Values.mirror.craneImage }}
           ports:
             - containerPort: 9443
               name: https
             - containerPort: 8081
               name: healthz
           args:
-            - --crane-image={{ .Values.mirror.craneImage }}
             - --clean-finished-mirror={{ .Values.mirror.cleanFinishedMirror }}
           livenessProbe:
             httpGet:

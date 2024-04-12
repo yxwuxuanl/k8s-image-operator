@@ -153,7 +153,7 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 	defer cancel()
 
 	var mux sync.Mutex
-	platformMap := make(map[string]int)
+	var platforms []string
 
 	for _, image := range images {
 		wg.Add(1)
@@ -166,16 +166,15 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 				return
 			}
 
+			var ps []string
+			for _, platform := range imagePlatform {
+				ps = append(ps, platform.String())
+			}
+
 			mux.Lock()
 			defer mux.Unlock()
 
-			for _, platform := range imagePlatform {
-				if _, ok := platformMap[platform.String()]; !ok {
-					platformMap[platform.String()] = 1
-				} else {
-					platformMap[platform.String()]++
-				}
-			}
+			platforms = intersection(platforms, ps)
 		}()
 	}
 
@@ -186,11 +185,7 @@ func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []str
 		arch []string
 	)
 
-	for s, n := range platformMap {
-		if n < len(images) {
-			continue
-		}
-
+	for _, s := range platforms {
 		platform, _ := containerregistryv1.ParsePlatform(s)
 		if !slices.Contains(oss, platform.OS) {
 			oss = append(oss, platform.OS)
@@ -312,14 +307,6 @@ func updateMutatingWebhookConfiguration(ctx context.Context, cli client.Client, 
 
 	log.FromContext(ctx).Info(string("mutating webhook configuration has been " + op))
 	return nil
-}
-
-func getEnvOrDie(name string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		panic("missing required environment variable " + name)
-	}
-	return value
 }
 
 func getArch(platform *containerregistryv1.Platform) string {

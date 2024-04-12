@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"flag"
 	"fmt"
 	apiv1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -12,9 +11,7 @@ import (
 	"strings"
 )
 
-var (
-	craneImage = flag.String("crane-image", "", "")
-)
+var craneImage string
 
 func buildMirrorPodTemplate(mirror *apiv1.Mirror) corev1.PodTemplateSpec {
 	volumes := []corev1.Volume{
@@ -65,7 +62,7 @@ func buildMirrorPodTemplate(mirror *apiv1.Mirror) corev1.PodTemplateSpec {
 
 	pullContainer := corev1.Container{
 		Name:            "pull",
-		Image:           *craneImage,
+		Image:           craneImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		VolumeMounts:    volumeMounts,
 		Env: []corev1.EnvVar{
@@ -101,7 +98,7 @@ func buildMirrorPodTemplate(mirror *apiv1.Mirror) corev1.PodTemplateSpec {
 
 	pushContainer := corev1.Container{
 		Name:            "push",
-		Image:           *craneImage,
+		Image:           craneImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		VolumeMounts:    volumeMounts,
 		Command:         []string{"sh"},

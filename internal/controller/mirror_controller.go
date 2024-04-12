@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	"os"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -260,6 +261,10 @@ func (r *MirrorReconciler) cleanFinishedMirror() error {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *MirrorReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if craneImage = os.Getenv("CRANE_IMAGE"); craneImage == "" {
+		return fmt.Errorf("envionment variable `CRANE_IMAGE` is required")
+	}
+
 	createPred := builder.WithPredicates(predicate.Funcs{
 		DeleteFunc: func(event event.DeleteEvent) bool {
 			return false
