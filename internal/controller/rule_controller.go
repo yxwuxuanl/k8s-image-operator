@@ -93,7 +93,7 @@ func (r *RuleReconciler) Handle(ctx context.Context, request admission.Request) 
 		return v.(admission.Handler).Handle(ctx, request)
 	}
 
-	return admission.Allowed("")
+	return admission.Allowed("no handler found")
 }
 
 // SetupWithManager sets up the controller with the Manager.

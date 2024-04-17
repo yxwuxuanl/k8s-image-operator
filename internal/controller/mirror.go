@@ -60,11 +60,21 @@ func buildMirrorPodTemplate(mirror *apiv1.Mirror) corev1.PodTemplateSpec {
 		verbose,
 	}
 
+	securityContext := &corev1.SecurityContext{
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+		RunAsGroup:   ptr.To(int64(1001)),
+		RunAsUser:    ptr.To(int64(1001)),
+		RunAsNonRoot: ptr.To(true),
+	}
+
 	pullContainer := corev1.Container{
 		Name:            "pull",
 		Image:           craneImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		VolumeMounts:    volumeMounts,
+		SecurityContext: securityContext,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "DOCKER_CONFIG",
@@ -100,6 +110,7 @@ func buildMirrorPodTemplate(mirror *apiv1.Mirror) corev1.PodTemplateSpec {
 		Name:            "push",
 		Image:           craneImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
+		SecurityContext: securityContext,
 		VolumeMounts:    volumeMounts,
 		Command:         []string{"sh"},
 		Env: []corev1.EnvVar{
@@ -135,16 +146,18 @@ func buildMirrorPodTemplate(mirror *apiv1.Mirror) corev1.PodTemplateSpec {
 	return corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
-				"image.lin2ur.cn/mirror": mirror.GetName(),
+				MirrorAnnotation: mirror.GetName(),
 			},
 		},
 		Spec: corev1.PodSpec{
-			Volumes:               volumes,
-			InitContainers:        []corev1.Container{pullContainer},
-			Containers:            []corev1.Container{pushContainer},
-			NodeSelector:          mirror.Spec.NodeSelector,
-			RestartPolicy:         corev1.RestartPolicyNever,
-			ActiveDeadlineSeconds: mirror.Spec.ActiveDeadlineSeconds,
+			Volumes:                      volumes,
+			InitContainers:               []corev1.Container{pullContainer},
+			Containers:                   []corev1.Container{pushContainer},
+			NodeSelector:                 mirror.Spec.NodeSelector,
+			RestartPolicy:                corev1.RestartPolicyNever,
+			ActiveDeadlineSeconds:        mirror.Spec.ActiveDeadlineSeconds,
+			EnableServiceLinks:           ptr.To(false),
+			AutomountServiceAccountToken: ptr.To(false),
 		},
 	}
 }

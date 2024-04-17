@@ -3,8 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	containerregistryv1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/imdario/mergo"
 	imagev1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
 	"gomodules.xyz/jsonpatch/v2"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
@@ -21,12 +19,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"slices"
 	"strings"
-	"sync"
-	"time"
 )
 
 const WebhookPathPrefix = "/mutate-pod/"
-const SetArchAnnotation = "image.lin2ur.cn/set-arch-affinity"
 
 var webhookClientConfig admissionregistrationv1.WebhookClientConfig
 
@@ -55,180 +50,52 @@ func buildMutateHandler(decoder *admission.Decoder, rule imagev1.Rule) admission
 			return admission.Errored(http.StatusBadRequest, err)
 		}
 
-		logger := log.FromContext(ctx)
+		var patches []jsonpatch.JsonPatchOperation
 
-		var (
-			patches []jsonpatch.JsonPatchOperation
-			images  []string
-		)
-
-		processContainers := func(containers []corev1.Container, initContainers bool) bool {
-			var containerPath string
-			if initContainers {
-				containerPath = "initContainers"
-			} else {
-				containerPath = "containers"
-			}
-
-			for i, container := range containers {
-				hasDisallowedTag := slices.ContainsFunc(rule.Spec.DisallowedTags, func(s string) bool {
-					return s == getImageTag(container.Image)
-				})
-
-				if hasDisallowedTag {
-					response = admission.Denied(fmt.Sprintf(
-						"[%s] tags is not allowed in %s: %s",
-						strings.Join(rule.Spec.DisallowedTags, " "), containerPath, container.Name,
-					))
-
-					return false
-				}
-
-				image, isRewrite := rewriteImage(container.Image, rule.Spec.Rules)
-				if !isRewrite {
-					images = append(images, container.Image)
-					continue
-				}
-
-				images = append(images, image)
-
-				patches = append(patches, jsonpatch.JsonPatchOperation{
-					Operation: "replace",
-					Path:      fmt.Sprintf("/spec/%s/%d/image", containerPath, i),
-					Value:     image,
-				})
-
-				logger.Info(
-					"rewrite image",
-					"container", containerPath+"/"+container.Name,
-					"image", image,
-				)
-			}
-
-			return true
-		}
-
-		if !processContainers(pod.Spec.InitContainers, true) ||
-			!processContainers(pod.Spec.Containers, false) {
-			return
-		}
-
-		if !rule.Spec.SetArchNodeAffinity {
-			return admission.Patched("", patches...)
-		}
-
-		if affinityPatches, err := buildArchAffinityPatches(ctx, pod, images); err != nil {
-			log.FromContext(ctx).Error(err, "failed to build arch affinity patches")
+		if v, err := mutateContainers(rule, pod.Spec.InitContainers, true); err == nil {
+			patches = append(patches, v...)
 		} else {
-			patches = append(patches, affinityPatches...)
+			return admission.Denied(err.Error())
+		}
+
+		if v, err := mutateContainers(rule, pod.Spec.Containers, false); err == nil {
+			patches = append(patches, v...)
+		} else {
+			return admission.Denied(err.Error())
 		}
 
 		return admission.Patched("", patches...)
 	}
 }
 
-func buildArchAffinityPatches(ctx context.Context, pod *corev1.Pod, images []string) ([]jsonpatch.JsonPatchOperation, error) {
-	annotations := pod.Annotations
+func mutateContainers(rule imagev1.Rule, containers []corev1.Container, isInitContainers bool) (patches []jsonpatch.JsonPatchOperation, err error) {
+	var containerPath string
+	if isInitContainers {
+		containerPath = "initContainers"
+	} else {
+		containerPath = "containers"
+	}
 
-	if annotations != nil {
-		if pod.Annotations[SetArchAnnotation] == "true" {
-			return nil, nil
+	for i, container := range containers {
+		hasDisallowedTag := slices.ContainsFunc(rule.Spec.DisallowedTags, func(s string) bool {
+			return s == getImageTag(container.Image)
+		})
+
+		if hasDisallowedTag {
+			return nil, fmt.Errorf(
+				"[%s] tags is not allowed in %s: %s",
+				strings.Join(rule.Spec.DisallowedTags, " "), containerPath, container.Name,
+			)
 		}
-	} else {
-		annotations = make(map[string]string)
+
+		if image, isRewrite := rewriteImage(container.Image, rule.Spec.Rules); isRewrite {
+			patches = append(patches, jsonpatch.NewOperation(
+				"replace",
+				fmt.Sprintf("/spec/%s/%d/image", containerPath, i),
+				image,
+			))
+		}
 	}
-
-	annotations[SetArchAnnotation] = "true"
-
-	var patches []jsonpatch.JsonPatchOperation
-	patches = append(patches, jsonpatch.JsonPatchOperation{
-		Operation: "replace",
-		Path:      "/metadata/annotations",
-		Value:     annotations,
-	})
-
-	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	var (
-		mux   sync.Mutex
-		archs []string
-		wg    sync.WaitGroup
-	)
-
-	for _, image := range images {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			imagePlatform, err := getImagePlatform(timeout, image)
-			if err != nil {
-				log.FromContext(ctx).Error(err, "failed to get image platform", "image", image)
-				return
-			}
-
-			var _archs []string
-
-			for _, platform := range imagePlatform {
-				_archs = append(_archs, getArch(platform))
-			}
-
-			mux.Lock()
-			defer mux.Unlock()
-
-			archs = intersection(archs, _archs)
-		}()
-	}
-
-	wg.Wait()
-	if len(archs) == 0 {
-		return nil, nil
-	}
-
-	affinity := pod.Spec.Affinity
-	if affinity == nil {
-		affinity = &corev1.Affinity{}
-	}
-
-	err := mergo.Merge(affinity, &corev1.Affinity{
-		NodeAffinity: &corev1.NodeAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-				NodeSelectorTerms: []corev1.NodeSelectorTerm{},
-			},
-		},
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	matchExpressions := []corev1.NodeSelectorRequirement{
-		{
-			Key:      "kubernetes.io/arch",
-			Operator: corev1.NodeSelectorOpIn,
-			Values:   archs,
-		},
-	}
-
-	if len(affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) > 0 {
-		affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
-			affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
-			matchExpressions...,
-		)
-	} else {
-		affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-			affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-			corev1.NodeSelectorTerm{
-				MatchExpressions: matchExpressions,
-			},
-		)
-	}
-
-	patches = append(patches, jsonpatch.JsonPatchOperation{
-		Operation: "replace",
-		Path:      "/spec/affinity",
-		Value:     affinity,
-	})
 
 	return patches, nil
 }
@@ -291,13 +158,4 @@ func updateMutatingWebhookConfiguration(ctx context.Context, cli client.Client, 
 
 	log.FromContext(ctx).Info(string("mutating webhook configuration has been " + op))
 	return nil
-}
-
-func getArch(platform *containerregistryv1.Platform) string {
-	switch true {
-	case platform.Architecture == "arm" && platform.Variant == "v7":
-		return "arm64"
-	default:
-		return platform.Architecture
-	}
 }

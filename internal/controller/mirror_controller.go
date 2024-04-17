@@ -58,7 +58,8 @@ type MirrorReconciler struct {
 }
 
 const (
-	JobCreated = "JobCreated"
+	JobCreated       = "JobCreated"
+	MirrorAnnotation = "image.lin2ur.cn/mirror"
 )
 
 //+kubebuilder:rbac:groups=image.lin2ur.cn,resources=mirrors,verbs=get;list;watch;create;update;patch;delete
@@ -160,14 +161,14 @@ func (r *MirrorReconciler) syncJobStatus(ctx context.Context, req ctrl.Request) 
 			LastTransitionTime: condition.LastTransitionTime,
 		}
 
-		if r := condition.Reason; r != "" {
-			cond.Reason = r
+		if reason := condition.Reason; reason != "" {
+			cond.Reason = reason
 		} else {
 			cond.Reason = string(condition.Type)
 		}
 
-		if m := condition.Message; m != "" {
-			cond.Message = m
+		if message := condition.Message; message != "" {
+			cond.Message = message
 		} else {
 			cond.Message = "no message"
 		}
@@ -198,7 +199,7 @@ func (r *MirrorReconciler) syncPodStatus(ctx context.Context, req ctrl.Request) 
 
 	mirror := &imagev1.Mirror{}
 	if err := r.Get(ctx, client.ObjectKey{
-		Name:      pod.GetAnnotations()["image.lin2ur.cn/mirror"],
+		Name:      pod.GetAnnotations()[MirrorAnnotation],
 		Namespace: pod.GetNamespace(),
 	}, mirror); err != nil {
 		if errors.IsNotFound(err) {
@@ -319,7 +320,7 @@ func (r *MirrorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	podEnqueueFunc := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, object client.Object) []reconcile.Request {
 		if object.GetDeletionTimestamp().IsZero() {
 			if anno := object.GetAnnotations(); anno != nil {
-				if _, ok := anno["image.lin2ur.cn/mirror"]; ok {
+				if _, ok := anno[MirrorAnnotation]; ok {
 					return []reconcile.Request{
 						{
 							NamespacedName: client.ObjectKey{
