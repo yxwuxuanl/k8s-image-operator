@@ -54,11 +54,11 @@ var _ webhook.Validator = &Rule{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *Rule) ValidateCreate() (admission.Warnings, error) {
-	if len(r.Spec.Rules) == 0 && len(r.Spec.DisallowedTags) == 0 {
+	if len(r.Spec.Rewrite) == 0 && len(r.Spec.DisallowedTags) == 0 {
 		return nil, errors.New("`rules` and `disallowedTags` cannot both be empty")
 	}
 
-	for i, rule := range r.Spec.Rules {
+	for i, rule := range r.Spec.Rewrite {
 		if rule.Regex != "" {
 			if _, err := regexp.Compile(rule.Regex); err != nil {
 				return nil, field.Invalid(
