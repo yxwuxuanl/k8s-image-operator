@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	imagev1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
 	"gomodules.xyz/jsonpatch/v2"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/utils/ptr"
 	"net/http"
 	"os"
+	"path"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -25,22 +27,36 @@ const WebhookPathPrefix = "/mutate-pod/"
 
 var webhookClientConfig admissionregistrationv1.WebhookClientConfig
 
-func initWebhookClientConfig() error {
-	caCert, err := os.ReadFile(getEnvOrDie("WEBHOOK_CA_CERT_FILE"))
+var (
+	webhookServiceName = flag.String("webhook-service-name", "", "Webhook service name")
+	webhookServicePort = flag.Int("webhook-service-port", webhook.DefaultPort, "Webhook service port")
+)
+
+func buildWebhookClientConfig() (admissionregistrationv1.WebhookClientConfig, error) {
+	if *webhookServiceName == "" {
+		return admissionregistrationv1.WebhookClientConfig{}, fmt.Errorf("webhook-service-name is required")
+	}
+
+	namespace, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 	if err != nil {
-		return fmt.Errorf("failed to read CA cert file: %w", err)
+		return admissionregistrationv1.WebhookClientConfig{}, fmt.Errorf("failed to read namespace: %w", err)
+	}
+
+	caCert, err := os.ReadFile(path.Join(os.Getenv("WEBHOOK_CERT_DIR"), "ca.crt"))
+	if err != nil {
+		return admissionregistrationv1.WebhookClientConfig{}, fmt.Errorf("failed to read CA cert file: %w", err)
 	}
 
 	webhookClientConfig = admissionregistrationv1.WebhookClientConfig{
 		CABundle: caCert,
 		Service: &admissionregistrationv1.ServiceReference{
-			Name:      getEnvOrDie("WEBHOOK_SERVICE_NAME"),
-			Namespace: getEnvOrDie("WEBHOOK_SERVICE_NAMESPACE"),
-			Port:      ptr.To(int32(webhook.DefaultPort)),
+			Name:      *webhookServiceName,
+			Namespace: string(namespace),
+			Port:      ptr.To(int32(*webhookServicePort)),
 		},
 	}
 
-	return nil
+	return webhookClientConfig, nil
 }
 
 func buildMutateHandler(decoder *admission.Decoder, rule imagev1.Rule) admission.HandlerFunc {
@@ -88,7 +104,7 @@ func mutateContainers(rule imagev1.Rule, containers []corev1.Container, isInitCo
 			)
 		}
 
-		if image, isRewrite := rewriteImage(container.Image, rule.Spec.Rules); isRewrite {
+		if image, isRewrite := rewriteImage(container.Image, rule.Spec.Rewrite); isRewrite {
 			patches = append(patches, jsonpatch.NewOperation(
 				"replace",
 				fmt.Sprintf("/spec/%s/%d/image", containerPath, i),

@@ -98,7 +98,10 @@ func (r *RuleReconciler) Handle(ctx context.Context, request admission.Request) 
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := initWebhookClientConfig(); err != nil {
+	var err error
+	webhookClientConfig, err = buildWebhookClientConfig()
+
+	if err != nil {
 		return err
 	}
 

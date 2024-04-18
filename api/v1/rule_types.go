@@ -28,8 +28,9 @@ type RuleSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Rules          []RewriteRule `json:"rules,omitempty"`
-	DisallowedTags []string      `json:"disallowedTags,omitempty"`
+	Rewrite []RewriteRule `json:"rewrite,omitempty"`
+
+	DisallowedTags []string `json:"disallowedTags,omitempty"`
 
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
 	PodSelector       *metav1.LabelSelector `json:"podSelector,omitempty"`

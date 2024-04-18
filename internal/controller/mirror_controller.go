@@ -24,12 +24,10 @@ import (
 	"gomodules.xyz/jsonpatch/v2"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -176,17 +174,16 @@ func (r *MirrorReconciler) syncJobStatus(ctx context.Context, req ctrl.Request) 
 		meta.SetStatusCondition(&mirror.Status.Conditions, cond)
 	}
 
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	_ = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		return r.Client.Status().Update(ctx, mirror)
 	})
+
+	return nil
 }
 
 func (r *MirrorReconciler) syncPodStatus(ctx context.Context, req ctrl.Request) error {
 	pod := &corev1.Pod{}
 	if err := r.Get(ctx, req.NamespacedName, pod); err != nil {
-		if errors.IsNotFound(err) {
-			return nil
-		}
 		return fmt.Errorf("unable to fetch pod: %w", err)
 	}
 
@@ -202,9 +199,6 @@ func (r *MirrorReconciler) syncPodStatus(ctx context.Context, req ctrl.Request) 
 		Name:      pod.GetAnnotations()[MirrorAnnotation],
 		Namespace: pod.GetNamespace(),
 	}, mirror); err != nil {
-		if errors.IsNotFound(err) {
-			return nil
-		}
 		return fmt.Errorf("unable to fetch mirror: %w", err)
 	}
 
@@ -262,8 +256,8 @@ func (r *MirrorReconciler) cleanFinishedMirror() error {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *MirrorReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if craneImage = os.Getenv("CRANE_IMAGE"); craneImage == "" {
-		return fmt.Errorf("envionment variable `CRANE_IMAGE` is required")
+	if *craneImage == "" {
+		return fmt.Errorf("crane-image is required")
 	}
 
 	createPred := builder.WithPredicates(predicate.Funcs{
@@ -292,7 +286,7 @@ func (r *MirrorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return false
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
-			return true
+			return updateEvent.ObjectNew.GetDeletionTimestamp().IsZero()
 		},
 		GenericFunc: func(genericEvent event.GenericEvent) bool {
 			return false
@@ -300,17 +294,15 @@ func (r *MirrorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	})
 
 	jobEnqueueFunc := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, object client.Object) []reconcile.Request {
-		if object.GetDeletionTimestamp().IsZero() {
-			for _, reference := range object.GetOwnerReferences() {
-				if reference.APIVersion == imagev1.GroupVersion.String() && reference.Kind == "Mirror" {
-					return []reconcile.Request{
-						{
-							NamespacedName: client.ObjectKey{
-								Name:      reference.Name + "-job",
-								Namespace: object.GetNamespace(),
-							},
+		for _, reference := range object.GetOwnerReferences() {
+			if reference.APIVersion == imagev1.GroupVersion.String() && reference.Kind == "Mirror" {
+				return []reconcile.Request{
+					{
+						NamespacedName: client.ObjectKey{
+							Name:      reference.Name + "-job",
+							Namespace: object.GetNamespace(),
 						},
-					}
+					},
 				}
 			}
 		}
@@ -318,17 +310,15 @@ func (r *MirrorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	})
 
 	podEnqueueFunc := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, object client.Object) []reconcile.Request {
-		if object.GetDeletionTimestamp().IsZero() {
-			if anno := object.GetAnnotations(); anno != nil {
-				if _, ok := anno[MirrorAnnotation]; ok {
-					return []reconcile.Request{
-						{
-							NamespacedName: client.ObjectKey{
-								Name:      object.GetName() + "-pod",
-								Namespace: object.GetNamespace(),
-							},
+		if anno := object.GetAnnotations(); anno != nil {
+			if _, ok := anno[MirrorAnnotation]; ok {
+				return []reconcile.Request{
+					{
+						NamespacedName: client.ObjectKey{
+							Name:      object.GetName() + "-pod",
+							Namespace: object.GetNamespace(),
 						},
-					}
+					},
 				}
 			}
 		}
