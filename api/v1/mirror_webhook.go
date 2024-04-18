@@ -52,17 +52,11 @@ var _ webhook.Validator = &Mirror{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *Mirror) ValidateCreate() (admission.Warnings, error) {
-	mirrorlog.Info("validate create", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object creation.
-	return nil, nil
+	return nil, r.validate()
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *Mirror) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	mirrorlog.Info("validate update", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object update.
 	return nil, nil
 }
 
@@ -84,8 +78,8 @@ func (r *Mirror) validate() error {
 		if secret.Type != corev1.SecretTypeDockerConfigJson {
 			return field.TypeInvalid(
 				path,
-				r.Spec.DockerConfig.SecretName,
-				"Secret type must be 'kubernetes.io/dockerconfigjson'",
+				secret.Type,
+				string("Secret type must be "+corev1.SecretTypeDockerConfigJson),
 			)
 		}
 	}
@@ -94,8 +88,5 @@ func (r *Mirror) validate() error {
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *Mirror) ValidateDelete() (admission.Warnings, error) {
-	mirrorlog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil
 }

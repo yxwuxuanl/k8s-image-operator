@@ -54,15 +54,19 @@ var _ webhook.Validator = &Rule{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *Rule) ValidateCreate() (admission.Warnings, error) {
+	return nil, r.validate()
+}
+
+func (r *Rule) validate() error {
 	if len(r.Spec.Rewrite) == 0 && len(r.Spec.DisallowedTags) == 0 {
-		return nil, errors.New("`rules` and `disallowedTags` cannot both be empty")
+		return errors.New("`rewrite` and `disallowedTags` cannot both be empty")
 	}
 
 	for i, rule := range r.Spec.Rewrite {
 		if rule.Regex != "" {
 			if _, err := regexp.Compile(rule.Regex); err != nil {
-				return nil, field.Invalid(
-					field.NewPath("spec").Child("rules").Index(i).Key("regex"),
+				return field.Invalid(
+					field.NewPath("spec").Child("rewrite").Index(i).Key("regex"),
 					rule.Regex,
 					err.Error(),
 				)
@@ -70,18 +74,15 @@ func (r *Rule) ValidateCreate() (admission.Warnings, error) {
 		}
 	}
 
-	return nil, nil
+	return nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *Rule) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	return r.ValidateCreate()
+	return nil, r.validate()
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *Rule) ValidateDelete() (admission.Warnings, error) {
-	rulelog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil
 }

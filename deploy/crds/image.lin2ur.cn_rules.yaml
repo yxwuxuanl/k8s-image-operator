@@ -140,7 +140,7 @@ spec:
                       type: object
                   type: object
                   x-kubernetes-map-type: atomic
-                rules:
+                rewrite:
                   items:
                     properties:
                       regex:

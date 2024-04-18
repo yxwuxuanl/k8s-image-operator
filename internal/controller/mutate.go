@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -110,6 +111,14 @@ func mutateContainers(rule imagev1.Rule, containers []corev1.Container, isInitCo
 				fmt.Sprintf("/spec/%s/%d/image", containerPath, i),
 				image,
 			))
+
+			ctrl.Log.Info(
+				"image has been rewritten",
+				"container", containerPath+"/"+container.Name,
+				"image", image,
+				"raw_image", container.Image,
+				"rule", rule.Name,
+			)
 		}
 	}
 

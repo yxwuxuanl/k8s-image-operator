@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	imagev1 "github.com/yxwuxuanl/k8s-image-operator/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"net/http"
@@ -86,7 +85,7 @@ func (r *RuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *RuleReconciler) Handle(ctx context.Context, request admission.Request) admission.Response {
 	ruleName, ok := ctx.Value(ruleNameCtxKey).(string)
 	if !ok {
-		return admission.Errored(http.StatusBadRequest, errors.New("rule name not found"))
+		panic("ruleName not found in context")
 	}
 
 	if v, ok := r.handlers.Load(ruleName); ok {
