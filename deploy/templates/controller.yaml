@@ -38,16 +38,8 @@ spec:
               name: tls
               subPath: ca
           env:
-            - name: WEBHOOK_CA_CERT_FILE
-              value: /tls/ca.crt
-            - name: WEBHOOK_SERVICE_NAME
-              value: {{ .Release.Name }}
-            - name: WEBHOOK_SERVICE_NAMESPACE
-              value: {{ .Release.Namespace }}
             - name: WEBHOOK_CERT_DIR
               value: /tls
-            - name: CRANE_IMAGE
-              value: {{ .Values.mirror.craneImage }}
           ports:
             - containerPort: 9443
               name: https
@@ -55,6 +47,8 @@ spec:
               name: healthz
           args:
             - --clean-finished-mirror={{ .Values.mirror.cleanFinishedMirror }}
+            - --crane-image={{ .Values.mirror.craneImage }}
+            - --webhook-service-name={{ .Release.Name }}
           livenessProbe:
             httpGet:
               path: /healthz

@@ -9,15 +9,6 @@ mirror:
   craneImage: registry.cn-shenzhen.aliyuncs.com/lin2ur/crane:0.19.1-alpine
   cleanFinishedMirror: 30m
 
-cfWorker:
-  enabled: false
-  images:
-    git: ''
-    wrangler: ''
-  accountId: ''
-  apiToken: ''
-  gitRepository: ''
-
 admissionWebhooks:
   enabled: true
   patch:
