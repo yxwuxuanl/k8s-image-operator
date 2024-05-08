@@ -140,7 +140,7 @@ spec:
                       type: object
                   type: object
                   x-kubernetes-map-type: atomic
-                rules:
+                rewrite:
                   items:
                     properties:
                       regex:
@@ -153,8 +153,6 @@ spec:
                       - replacement
                     type: object
                   type: array
-                setArchNodeAffinity:
-                  type: boolean
               type: object
             status:
               description: RuleStatus defines the observed state of Rule

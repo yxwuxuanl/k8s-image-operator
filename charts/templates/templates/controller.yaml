@@ -5,6 +5,7 @@ metadata:
   labels:
     app: {{ .Release.Name }}
 spec:
+  replicas: {{ .Values.controller.replicas }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}
@@ -24,9 +25,12 @@ spec:
           secret:
             secretName: {{ .Release.Name }}-webhook-tls
       containers:
-        - name: {{ .Release.Name }}
-          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
-          imagePullPolicy: IfNotPresent
+        - name: controller
+          image: '{{ .Values.controller.image.repository }}:{{ default .Chart.Version .Values.controller.image.tag }}'
+          imagePullPolicy: {{ .Values.controller.imagePullPolicy }}
+          {{- with .Values.controller.resources }}
+          resources: {{ toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - mountPath: /tls/tls.crt
               name: tls
@@ -47,7 +51,7 @@ spec:
               name: healthz
           args:
             - --clean-finished-mirror={{ .Values.mirror.cleanFinishedMirror }}
-            - --crane-image={{ .Values.mirror.craneImage }}
+            - '--crane-image={{ .Values.mirror.image.repository }}:{{ .Values.mirror.image.tag }}'
             - --webhook-service-name={{ .Release.Name }}
           livenessProbe:
             httpGet:
@@ -66,8 +70,12 @@ spec:
             successThreshold: 1
             failureThreshold: 5
       restartPolicy: Always
-      nodeSelector:
-        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- with .Values.controller.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
 
 ---
 apiVersion: v1

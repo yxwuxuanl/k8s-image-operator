@@ -1,0 +1,72 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /mutate-image-lin2ur-cn-v1-rule
+    failurePolicy: Fail
+    name: mrule.kb.io
+    rules:
+      - apiGroups:
+          - image.lin2ur.cn
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - rules
+    sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /validate-image-lin2ur-cn-v1-mirror
+    failurePolicy: Fail
+    name: vmirror.kb.io
+    rules:
+      - apiGroups:
+          - image.lin2ur.cn
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - mirrors
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /validate-image-lin2ur-cn-v1-rule
+    failurePolicy: Fail
+    name: vrule.kb.io
+    rules:
+      - apiGroups:
+          - image.lin2ur.cn
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - rules
+    sideEffects: None
