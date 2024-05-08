@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    metadata:
+      name: {{ .Release.Name }}
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: {{ .Release.Name }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Release.Name }}-webhook-tls
+      containers:
+        - name: controller
+          image: '{{ .Values.controller.image.repository }}:{{ default .Chart.Version .Values.controller.image.tag }}'
+          imagePullPolicy: {{ .Values.controller.imagePullPolicy }}
+          {{- with .Values.controller.resources }}
+          resources: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - mountPath: /tls/tls.crt
+              name: tls
+              subPath: cert
+            - mountPath: /tls/tls.key
+              name: tls
+              subPath: key
+            - mountPath: /tls/ca.crt
+              name: tls
+              subPath: ca
+          env:
+            - name: WEBHOOK_CERT_DIR
+              value: /tls
+          ports:
+            - containerPort: 9443
+              name: https
+            - containerPort: 8081
+              name: healthz
+          args:
+            - --clean-finished-mirror={{ .Values.mirror.cleanFinishedMirror }}
+            - '--crane-image={{ .Values.mirror.image.repository }}:{{ .Values.mirror.image.tag }}'
+            - --webhook-service-name={{ .Release.Name }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: healthz
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 5
+      restartPolicy: Always
+      {{- with .Values.controller.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  selector:
+    app: {{ .Release.Name }}
+  ports:
+    - protocol: TCP
+      port: 9443
+      targetPort: https
+  type: ClusterIP
