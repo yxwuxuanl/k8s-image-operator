@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  image-operator:
+  - apiVersion: v2
+    appVersion: 1.16.0
+    created: "2024-05-08T09:12:40.945107946Z"
+    description: A Helm chart for Kubernetes
+    digest: afd877a49446f53b6913fb6830cc7c4482d0f080c4bd3959cb6d0e118529b469
+    name: image-operator
+    type: application
+    urls:
+    - https://github.com/yxwuxuanl/k8s-image-operator/releases/download/image-operator-1.0.0/image-operator-1.0.0.tgz
+    version: 1.0.0
+generated: "2024-05-08T09:12:40.945113987Z"
