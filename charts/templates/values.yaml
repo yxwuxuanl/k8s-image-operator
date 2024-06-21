@@ -1,7 +1,7 @@
 controller:
   image:
-    repository: ghcr.io/yxwuxuanl/k8s-image-operator
-    tag: ''
+    repository: registry.cn-shenzhen.aliyuncs.com/lin2ur/k8s-image-operator
+    tag: 1.0.0
   imagePullPolicy: IfNotPresent
   nodeSelector: { }
   affinity: { }
@@ -10,7 +10,7 @@ controller:
 
 mirror:
   image:
-    repository: ghcr.io/yxwuxuanl/k8s-image-operator
+    repository: registry.cn-shenzhen.aliyuncs.com/lin2ur/k8s-image-operator
     tag: crane-0.19.1
   cleanFinishedMirror: 30m
 
@@ -18,6 +18,6 @@ admissionWebhooks:
   enabled: true
   patch:
     image:
-      repository: rancher/mirrored-ingress-nginx-kube-webhook-certgen
+      repository: registry.cn-shenzhen.aliyuncs.com/lin2ur/ingress-nginx-kube-webhook-certgen
       tag: v20221220-controller-v1.5.1-58-g787ea74b6
     enabled: true
