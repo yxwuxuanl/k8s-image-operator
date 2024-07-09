@@ -1,7 +1,7 @@
 controller:
   image:
     repository: registry.cn-shenzhen.aliyuncs.com/lin2ur/k8s-image-operator
-    tag: ''
+    tag: 1.0.2
   imagePullPolicy: IfNotPresent
   nodeSelector: { }
   affinity: { }
