@@ -159,6 +159,7 @@ func buildMirrorPodTemplate(mirror *apiv1.Mirror) corev1.PodTemplateSpec {
 			ActiveDeadlineSeconds:        mirror.Spec.ActiveDeadlineSeconds,
 			EnableServiceLinks:           ptr.To(false),
 			AutomountServiceAccountToken: ptr.To(false),
+			Tolerations:                  mirror.Spec.Tolerations,
 		},
 	}
 }

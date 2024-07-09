@@ -35,6 +35,7 @@ type MirrorSpec struct {
 	Resources    *corev1.ResourceRequirements `json:"resources,omitempty"`
 	SizeLimit    *resource.Quantity           `json:"sizeLimit,omitempty"`
 	NodeSelector map[string]string            `json:"nodeSelector,omitempty"`
+	Tolerations  []corev1.Toleration          `json:"tolerations,omitempty"`
 
 	// +kubebuilder:default:=3600
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
